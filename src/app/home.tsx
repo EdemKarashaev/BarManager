@@ -1,17 +1,19 @@
 
-import { useRouter } from 'expo-router';
 import { useState } from 'react';
+import { router } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useAuth } from '@/providers/auth';
 import {
-  Alert,
-  Pressable,
-  SafeAreaView,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  View,
+    Alert,
+    Pressable,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    View,
 } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
+
 type Route =
   | 'ttk'
   | 'writeoffs'
@@ -117,25 +119,18 @@ function Icon({
   );
 }
 
-
 export default function HomeScreen() {
-  const router = useRouter();
-
+  const { staff, signOut } = useAuth();
+  const [logoutError, setLogoutError] = useState('');
   const [activeTab, setActiveTab] = useState<Tab>('menu');
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [activeSection, setActiveSection] = useState<Route | null>(null);
 
   const openSection = (route: Route) => {
-    setDropdownOpen(false);
-
-    if (route === 'storage') {
-      router.push('/storage-norms');
-      return;
-    }
-
+    if (route === 'ttk') { setDropdownOpen(false); router.push('/recipes'); return; }
     setActiveSection(route);
+    setDropdownOpen(false);
   };
-
 
   const selectedLabel = SECTIONS.find(
     (item) => item.route === activeSection
@@ -222,7 +217,9 @@ export default function HomeScreen() {
         <Text style={styles.greeting}>Настройки</Text>
         <View style={styles.settingsCard}>
           <Text style={styles.settingsTitle}>Профиль сотрудника</Text>
-          <Text style={styles.settingsText}>Роль: Бармен</Text>
+          <Text style={styles.settingsText}>Роль: {staff?.roleName || 'Не определена'}</Text>
+          <Pressable accessibilityRole="button" style={{ paddingVertical: 12 }} onPress={() => { void signOut().catch(() => setLogoutError('Не удалось выйти. Повторите попытку.')); }}><Text style={{ color: C.red }}>Выйти из аккаунта</Text></Pressable>
+          {!!logoutError && <Text style={{ color: C.red }}>{logoutError}</Text>}
         </View>
         <Pressable
           style={styles.settingsCard}

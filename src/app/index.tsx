@@ -1,4 +1,3 @@
-import { router } from 'expo-router';
 import { useState } from 'react';
 import {
   ActivityIndicator,
@@ -141,41 +140,8 @@ export default function Index() {
         return;
       }
 
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('role_id')
-        .eq('id', data.user.id)
-        .single();
+    } catch {
 
-      if (profileError || !profile) {
-        Alert.alert(
-          'Вход выполнен',
-          'Пользователь авторизован, но профиль сотрудника не найден. Обратитесь к менеджеру.'
-        );
-        return;
-      }
-
-      const { data: role, error: roleError } = await supabase
-        .from('roles')
-        .select('Role')
-        .eq('id', profile.role_id)
-        .single();
-
-      if (roleError || !role) {
-        Alert.alert(
-          'Вход выполнен',
-          'Не удалось определить роль сотрудника.'
-        );
-        return;
-      }
-     console.log('Добро пожаловать! Роль:', role.Role);
-      router.replace('/home');
-
-      console.log('USER:', data.user);
-      console.log('PROFILE:', profile);
-      console.log('ROLE:', role);
-    } catch (error) {
-      console.log('LOGIN ERROR:', error);
 
       Alert.alert(
         'Ошибка',
