@@ -1,9 +1,9 @@
+import { AuthProvider, useAuth } from '@/providers/auth';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { AuthProvider, useAuth } from '@/providers/auth';
 void SplashScreen.preventAutoHideAsync().catch(() => {});
 function Routes() {
   const { session, staff, loading, error, retry, signOut } = useAuth();
@@ -23,6 +23,10 @@ function Routes() {
     <Stack.Protected guard={!session || !staff}><Stack.Screen name="index" /></Stack.Protected>
     <Stack.Protected guard={!!session && !!staff}>
       <Stack.Screen name="home" />
+      <Stack.Screen name="transfers/index" />
+<Stack.Screen name="transfers/create" />
+<Stack.Screen name="transfers/[id]" />
+<Stack.Screen name="notifications" />
       <Stack.Screen name="storage" />
       <Stack.Screen name="recipes/index" />
       <Stack.Screen name="recipes/[id]" />

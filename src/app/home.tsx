@@ -1,17 +1,17 @@
 
-import { useState } from 'react';
-import { router } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/providers/auth';
+import { router } from 'expo-router';
+import { useState } from 'react';
 import {
-    Alert,
-    Pressable,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    View,
+  Alert,
+  Pressable,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle, Path } from 'react-native-svg';
 
 type Route =
@@ -137,6 +137,14 @@ export default function HomeScreen() {
     if (route === 'ttk') { setDropdownOpen(false); router.push('/recipes'); return; }
     setActiveSection(route);
     setDropdownOpen(false);
+
+
+if (route === 'transfers') {
+  setDropdownOpen(false);
+  router.push('/transfers');
+  return;
+}
+
   };
 
   const selectedLabel = SECTIONS.find(
