@@ -127,6 +127,13 @@ export default function HomeScreen() {
   const [activeSection, setActiveSection] = useState<Route | null>(null);
 
   const openSection = (route: Route) => {
+    // storage-rules: linked route
+    if (route === 'storage') {
+      setDropdownOpen(false);
+      router.push('/storage');
+      return;
+    }
+
     if (route === 'ttk') { setDropdownOpen(false); router.push('/recipes'); return; }
     setActiveSection(route);
     setDropdownOpen(false);
