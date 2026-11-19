@@ -34,6 +34,7 @@ type Product = {
   name: string;
   supplier_id: string | null;
   category: string | null;
+  unit_price: number | null;
 };
 
 type Cell = {
@@ -49,6 +50,61 @@ function formatQuantity(value: number) {
   return String(value);
 }
 
+
+function PriceCell({ product, onSave }: {
+  product: Product;
+  onSave: (id: string, price: number) => Promise<boolean>;
+}) {
+  const [value, setValue] = useState(
+    product.unit_price == null ? '' : String(product.unit_price)
+  );
+  const [saving, setSaving] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const missing = product.unit_price == null || Number(product.unit_price) <= 0;
+
+  useEffect(() => {
+    if (!focused && !saving) {
+      setValue(product.unit_price == null ? '' : String(product.unit_price));
+    }
+  }, [product.unit_price, focused, saving]);
+
+  async function savePrice() {
+    if (saving) return;
+    const raw = value.trim().replace(',', '.');
+    const parsed = Number(raw);
+    if (!raw || !Number.isFinite(parsed) || parsed < 0 ||
+        !/^\d+(\.\d{1,2})?$/.test(raw)) {
+      setValue(product.unit_price == null ? '' : String(product.unit_price));
+      return;
+    }
+    if (parsed === Number(product.unit_price)) return;
+    setSaving(true);
+    try {
+      const ok = await onSave(product.id, parsed);
+      if (!ok) setValue(product.unit_price == null ? '' : String(product.unit_price));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <View style={[styles.quantityCell, styles.priceColumn, missing && styles.missingPriceCell]}>
+      <TextInput
+        value={value}
+        onChangeText={setValue}
+        onFocus={() => setFocused(true)}
+        onBlur={() => { setFocused(false); void savePrice(); }}
+        onSubmitEditing={() => void savePrice()}
+        keyboardType="decimal-pad"
+        placeholder="Нет цены"
+        placeholderTextColor="#F38A94"
+        selectTextOnFocus
+        editable={!saving}
+        style={[styles.quantityInput, missing && styles.missingPriceInput]}
+      />
+    </View>
+  );
+}
 
 function QuantityCell({
   cell,
@@ -173,7 +229,7 @@ export default function AdminOrdersScreen() {
         supabase.from('order_suppliers').select('id,name'),
         supabase
           .from('order_products')
-          .select('id,name,supplier_id,category'),
+          .select('id,name,supplier_id,category,unit_price'),
         supabase
           .from('weekly_orders')
           .select('id,location_id,week_start,status'),
@@ -347,6 +403,22 @@ async function addOrderItem(
   await load();
   return true;
 }
+  async function saveProductPrice(productId: string, price: number) {
+    setErrorMessage('');
+    const { error: priceError } = await supabase.rpc(
+      'admin_update_order_product_price',
+      { p_product_id: productId, p_price: price }
+    );
+    if (priceError) {
+      setErrorMessage('Не удалось сохранить цену: ' + priceError.message);
+      return false;
+    }
+    setProducts(current => current.map(p =>
+      p.id === productId ? { ...p, unit_price: price } : p
+    ));
+    return true;
+  }
+
   async function saveQuantity(itemId: string, quantity: number) {
     const original = items.find((item) => item.id === itemId);
     if (!original) return false;
@@ -548,6 +620,8 @@ async function saveCell(cell: Cell, quantity: number) {
               Наименование
             </Text>
 
+            <Text style={[styles.headerCell, styles.priceColumn]}>Цена, ₽</Text>
+
             {locations.map((location) => (
               <Text
                 key={location.id}
@@ -573,6 +647,7 @@ async function saveCell(cell: Cell, quantity: number) {
                     <Text style={[styles.cell, styles.productCell]}>
                       {product.name}
                     </Text>
+                    <PriceCell product={product} onSave={saveProductPrice} />
                     {product.cells.map((cell) => (
                       <QuantityCell
                         key={cell.key}
@@ -597,7 +672,7 @@ async function saveCell(cell: Cell, quantity: number) {
         Ресторанов: {locations.length}
       </Text>
       <Text style={styles.hint}>
-        Нажми на количество, введи число и нажми Enter
+        Нажми на количество или цену, введи число и нажми Enter
         или перейди в другую ячейку.
         Прочерк означает, что редактируемая строка заказа
         отсутствует или есть несколько совпадений.
@@ -732,6 +807,17 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     borderBottomWidth: 1,
     borderColor: '#303438',
+  },
+  priceColumn: {
+    width: 130,
+  },
+  missingPriceCell: {
+    backgroundColor: '#4A252C',
+  },
+  missingPriceInput: {
+    borderColor: '#C95160',
+    color: '#FF8D99',
+    backgroundColor: '#382127',
   },
   productCell: {
     width: 250,

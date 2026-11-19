@@ -1,4 +1,3 @@
-import { OrderSupplement } from "@/components/order-supplement";
 /* eslint-disable react-hooks/set-state-in-effect -- Reset remote data immediately when account or reporting period changes; stale data must not remain editable. */
 import {
   emptyFilters,
@@ -32,9 +31,7 @@ import { router } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
-  Platform,
   ScrollView,
   Text,
   TextInput,
@@ -333,43 +330,26 @@ export default function OrdersScreen() {
       if (generation === live.current) setBusy(false);
     }
   }
-  async function clearWholeOrder() {
-    if (!order || !editable || working.current || dirty) return;
+  async function reopenForEditing() {
+    if (!order || order.status !== "submitted" || working.current || dirty) return;
     working.current = true;
     setBusy(true);
-    setError('');
+    setError("");
     const generation = live.current;
     try {
-      await ordersRpc('bm_orders_clear', {
+      await ordersRpc<number>("bm_orders_reopen", {
         p_order: order.id,
         p_revision: order.revision,
       });
       await localWrites.current;
       await AsyncStorage.removeItem(draftKey);
-      if (generation === live.current) {
-        setQuantities({});
-        setDirty(false);
-        setReload(n => n + 1);
-      }
+      if (generation === live.current) setReload((n) => n + 1);
     } catch (e) {
       if (generation === live.current) setError(orderError(e));
     } finally {
       working.current = false;
       if (generation === live.current) setBusy(false);
     }
-  }
-
-  function confirmClearOrder() {
-    if (Platform.OS === 'web') {
-      if (typeof window !== 'undefined' && window.confirm('Удалить все позиции заказа за выбранную неделю? Это действие нельзя отменить.')) {
-        void clearWholeOrder();
-      }
-      return;
-    }
-    Alert.alert('Удалить весь заказ?', 'Все позиции заказа за выбранную неделю будут удалены. Отменить действие нельзя.', [
-      { text: 'Отмена', style: 'cancel' },
-      { text: 'Удалить', style: 'destructive', onPress: () => void clearWholeOrder() },
-    ]);
   }
 
   return (
@@ -576,27 +556,18 @@ export default function OrdersScreen() {
                   onPress={() => void save(true)}
                 />
                 </View>
-                <OButton
-                  title="Удалить весь заказ"
-                  disabled={busy || dirty}
-                  onPress={confirmClearOrder}
-                />
-                {dirty && <Text style={os.muted}>
-                  Перед удалением сохраните черновик или загрузите серверную версию.
-                </Text>}
               </View>
             ) : (
               <View style={{ gap: 8 }}>
                 <Text style={os.success}>Заказ доступен администратору.</Text>
-                {order.status === "submitted" ? (
-                  <OrderSupplement
-                    order={order}
-                    items={orderItems}
-                    onDone={() => setReload((n) => n + 1)}
+                {order.status === "submitted" && (
+                  <OButton
+                    title="Редактировать заказ"
+                    disabled={busy || dirty}
+                    onPress={() => void reopenForEditing()}
                   />
-                ) : (
-                  <Text style={os.muted}>Дополнение закрыто.</Text>
                 )}
+
               </View>
             )}
           </View>

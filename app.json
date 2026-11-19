@@ -2,7 +2,7 @@
   "expo": {
     "name": "BarManager",
     "slug": "BarManager",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "barmanager",
@@ -42,6 +42,7 @@
       "reactCompiler": true
     },
     "extra": {
+      "releaseChannel": "beta",
       "router": {
         "asyncRoutes": {
           "web": true
@@ -50,6 +51,12 @@
       "eas": {
         "projectId": "81634596-b3e7-42ed-bca4-56607d7edf9a"
       }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/81634596-b3e7-42ed-bca4-56607d7edf9a"
     }
   }
 }

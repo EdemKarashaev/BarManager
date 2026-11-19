@@ -1,5 +1,6 @@
 
 import { useAuth } from '@/providers/auth';
+import Constants from 'expo-constants';
 import { router } from 'expo-router';
 import { useState } from 'react';
 import {
@@ -122,6 +123,8 @@ function Icon({
 export default function HomeScreen() {
   const { staff, signOut } = useAuth();
   const [logoutError, setLogoutError] = useState('');
+  const appVersion = Constants.expoConfig?.version ?? '—';
+  const releaseChannel = Constants.expoConfig?.extra?.releaseChannel ?? 'beta';
   const [activeTab, setActiveTab] = useState<Tab>('menu');
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [activeSection, setActiveSection] = useState<Route | null>(null);
@@ -246,6 +249,10 @@ if (route === 'transfers') {
           <Text style={styles.settingsTitle}>Настройки приложения</Text>
           <Text style={styles.settingsText}>Язык, уведомления и другие параметры</Text>
         </Pressable>
+        <View style={styles.versionFooter}>
+          <Text style={styles.versionBrand}>BAR MANAGER</Text>
+          <Text style={styles.versionText}>Версия {appVersion} · {releaseChannel}</Text>
+        </View>
       </View>
     );
   };
@@ -596,6 +603,25 @@ const styles = StyleSheet.create({
 
   settingsContent: {
     gap: 12,
+  },
+
+  versionFooter: {
+    alignItems: 'center',
+    paddingTop: 28,
+    paddingBottom: 18,
+    gap: 6,
+  },
+
+  versionBrand: {
+    color: '#C7A56B',
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 2,
+  },
+
+  versionText: {
+    color: '#999999',
+    fontSize: 12,
   },
 
   settingsCard: {
