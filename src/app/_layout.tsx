@@ -28,6 +28,7 @@ function Routes() {
 <Stack.Screen name="transfers/[id]" />
 <Stack.Screen name="notifications" />
       <Stack.Screen name="storage" />
+      <Stack.Screen name="orders" />
       <Stack.Screen name="recipes/index" />
       <Stack.Screen name="recipes/[id]" />
       <Stack.Screen name="explore" />

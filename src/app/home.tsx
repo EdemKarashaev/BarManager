@@ -127,6 +127,7 @@ export default function HomeScreen() {
   const [activeSection, setActiveSection] = useState<Route | null>(null);
 
   const openSection = (route: Route) => {
+    if (route === 'order') { setDropdownOpen(false); router.push('/orders'); return; }
     // storage-rules: linked route
     if (route === 'storage') {
       setDropdownOpen(false);

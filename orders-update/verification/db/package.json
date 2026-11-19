@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "@electric-sql/pglite": "^0.5.16",
+    "prettier": "^3.10.1"
+  }
+}

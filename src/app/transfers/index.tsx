@@ -3,13 +3,13 @@ import { supabase } from '@/lib/supabase';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -54,6 +54,7 @@ export default function TransfersScreen() {
   const [transfers, setTransfers] = useState<Transfer[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [myLocations, setMyLocations] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [sendingId, setSendingId] = useState<string | null>(null);
@@ -95,6 +96,21 @@ export default function TransfersScreen() {
       if (locationResult.error) throw locationResult.error;
       if (accessResult.error) throw accessResult.error;
 
+      const adminResult = await supabase.rpc(
+  'is_inventory_admin'
+);
+
+if (adminResult.error) {
+  throw adminResult.error;
+}
+
+setIsAdmin(adminResult.data === true);
+
+if (adminResult.error) {
+  throw adminResult.error;
+}
+
+setIsAdmin(!!adminResult.data);
       setUserId(user.id);
       setTransfers((transferResult.data ?? []) as Transfer[]);
       setLocations((locationResult.data ?? []) as Location[]);
@@ -137,32 +153,36 @@ export default function TransfersScreen() {
   }
 
   const visibleTransfers = transfers.filter((transfer) => {
-    const isSender =
-      transfer.created_by === userId ||
-      myLocations.includes(transfer.from_location_id);
+  const isSender =
+    isAdmin ||
+    transfer.created_by === userId ||
+    myLocations.includes(transfer.from_location_id);
 
-    const isRecipient = myLocations.includes(
-      transfer.to_location_id
+  const isRecipient =
+    isAdmin ||
+    myLocations.includes(transfer.to_location_id);
+
+  if (tab === 'outgoing') {
+    return (
+      isSender &&
+      !['completed', 'cancelled'].includes(transfer.status)
     );
+  }
 
-    if (tab === 'outgoing') {
-      return (
-        isSender &&
-        !['completed', 'cancelled'].includes(transfer.status)
-      );
-    }
+  if (tab === 'incoming') {
+    return (
+      isRecipient &&
+      !['completed', 'cancelled', 'draft'].includes(
+        transfer.status
+      )
+    );
+  }
 
-    if (tab === 'incoming') {
-      return (
-        isRecipient &&
-        !['completed', 'cancelled', 'draft'].includes(
-          transfer.status
-        )
-      );
-    }
-
-    return ['completed', 'cancelled'].includes(transfer.status);
-  });
+  return (
+    (isAdmin || isSender || isRecipient) &&
+    ['completed', 'cancelled'].includes(transfer.status)
+  );
+});
 
   async function sendDraft(transfer: Transfer) {
     if (sendingId) return;

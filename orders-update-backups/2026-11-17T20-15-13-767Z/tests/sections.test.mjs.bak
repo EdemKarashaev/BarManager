@@ -1,0 +1,10 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {recipeSection,recipeSections} from '../payload/src/lib/recipe-sections.ts';
+import {visibleRecipes,matchesRecipe} from '../payload/src/lib/recipe-model.ts';
+const row=(id,sheet,hidden=false,sort=0)=>({id,name:'Мандарин',source_sheet:sheet,category:{name:'Другая категория',sort_order:sort},admin_only:hidden,status:'active',variants:[]});
+test('uses source sheet rather than unrelated category',()=>assert.equal(recipeSection(row(1,'Коктейли')),'Коктейли'));
+test('one imported sheet still appears in section tabs',()=>assert.deepEqual(recipeSections([row(1,'Зима')]),[{name:'Зима',count:1}]));
+test('deduplicates sections and follows stored sort order',()=>assert.deepEqual(recipeSections([row(1,'Чаи',false,4),row(2,'Коктейли',false,1),row(3,'Чаи',false,4)]),[{name:'Коктейли',count:1},{name:'Чаи',count:2}]));
+test('hidden-only sections absent for bartender, available to admin',()=>{const rows=[row(1,'Коктейли'),row(2,'Архив',true)];assert.deepEqual(recipeSections(visibleRecipes(rows,false)),[{name:'Коктейли',count:1}]);assert.equal(recipeSections(visibleRecipes(rows,true)).length,2);});
+test('both status types remain inside the selected sheet and searchable',()=>{const rows=[{...row(1,'Коктейли'),status:'coming_soon'},{...row(2,'Коктейли'),status:'phasing_out'}];assert.equal(rows.filter(r=>recipeSection(r)==='Коктейли'&&matchesRecipe(r,'мандарин')).length,2);});
+test('falls back to category or unnamed section for new manual recipes',()=>{assert.equal(recipeSection({category:{name:'Чаи'}}),'Чаи');assert.equal(recipeSection({category:null}),'Без раздела');});

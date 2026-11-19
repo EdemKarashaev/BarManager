@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {recipeSection,recipeSections} from '../payload/src/lib/recipe-sections.ts';
-import {visibleRecipes,matchesRecipe} from '../payload/src/lib/recipe-model.ts';
+import {recipeSection,recipeSections} from '../src/lib/recipe-sections.ts';
+import {visibleRecipes,matchesRecipe} from '../src/lib/recipe-model.ts';
 const row=(id,sheet,hidden=false,sort=0)=>({id,name:'Мандарин',source_sheet:sheet,category:{name:'Другая категория',sort_order:sort},admin_only:hidden,status:'active',variants:[]});
 test('uses source sheet rather than unrelated category',()=>assert.equal(recipeSection(row(1,'Коктейли')),'Коктейли'));
 test('one imported sheet still appears in section tabs',()=>assert.deepEqual(recipeSections([row(1,'Зима')]),[{name:'Зима',count:1}]));
