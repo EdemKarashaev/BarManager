@@ -7,7 +7,8 @@ import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 const APP_VERSION = Constants.expoConfig?.version ?? '0.1.0';
-const RELEASE_CHANNEL = Constants.expoConfig?.extra?.releaseChannel ?? 'beta';
+const RELEASE_CHANNEL: string =
+  String(Constants.expoConfig?.extra?.releaseChannel ?? 'beta');
 
 void SplashScreen.preventAutoHideAsync().catch(() => {});
 

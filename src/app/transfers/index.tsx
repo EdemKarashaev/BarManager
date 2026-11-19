@@ -96,21 +96,13 @@ export default function TransfersScreen() {
       if (locationResult.error) throw locationResult.error;
       if (accessResult.error) throw accessResult.error;
 
-      const adminResult = await supabase.rpc(
-  'is_inventory_admin'
-);
+      const adminResult = await supabase.rpc('is_inventory_admin');
 
-if (adminResult.error) {
-  throw adminResult.error;
-}
+      if (adminResult.error) {
+        throw adminResult.error;
+      }
 
-setIsAdmin(adminResult.data === true);
-
-if (adminResult.error) {
-  throw adminResult.error;
-}
-
-setIsAdmin(!!adminResult.data);
+      setIsAdmin(adminResult.data === true);
       setUserId(user.id);
       setTransfers((transferResult.data ?? []) as Transfer[]);
       setLocations((locationResult.data ?? []) as Location[]);
