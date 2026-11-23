@@ -1,878 +1,1453 @@
+/* eslint-disable react-hooks/set-state-in-effect -- Reset remote data immediately when account or reporting period changes; stale data must not remain editable. */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { decimalUnits } from "@/lib/order-rules";
+
 import {
-  ActivityIndicator,
-  Alert,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View
-} from 'react-native';
-import { supabase } from '../../lib/supabase';
+  orderError,
 
-type Location = { id: string; name: string };
-type Supplier = { id: string; name: string };
-type Order = {
-  id: string;
-  location_id: string;
-  week_start: string;
-  status: string;
-};
-type OrderItem = {
-  id: string;
-  order_id: string;
-  product_id: string;
-  quantity: number;
-  supplier_id_snapshot: string | null;
-};
+  ordersRpc,
 
-type Product = {
-  id: string;
-  name: string;
-  supplier_id: string | null;
-  category: string | null;
-  unit_price: number | null;
-};
+  orderStatus,
 
-type Cell = {
+  type Catalog,
+
+  type Order,
+
+  type OrderContext,
+} from "@/lib/orders-api";
+
+import { useEffect, useRef, useState } from "react";
+
+import {
+  exportAllSuppliersZip,
+
+  exportSupplierExcel,
+} from "@/lib/order-excel-export";
+
+import { FlatList, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
+
+import {
+  Choice,
+
+  emptyFilters,
+
+  OButton,
+
+  OrderFilters,
+
+  os,
+
+  type Filters,
+} from "../../components/order-ui";
+
+type SummaryRow = {
+
   key: string;
-  itemId: string | null;
+
   productId: string;
-  locationId: string;
-  value: number;
-  editable: boolean;
+
+  name: string;
+
+  supplier: string;
+
+  supplierId: string | null;
+
+  category: string;
+
+  price: string | null;
+
+  quantities: Record<string, number>;
+
+  total: number;
+
+  amount: number;
+
 };
 
-function formatQuantity(value: number) {
-  return String(value);
-}
+function AdminQuantityCell({
 
+  value,
 
-function PriceCell({ product, onSave }: {
-  product: Product;
-  onSave: (id: string, price: number) => Promise<boolean>;
-}) {
-  const [value, setValue] = useState(
-    product.unit_price == null ? '' : String(product.unit_price)
-  );
-  const [saving, setSaving] = useState(false);
-  const [focused, setFocused] = useState(false);
-  const missing = product.unit_price == null || Number(product.unit_price) <= 0;
+  disabled,
 
-  useEffect(() => {
-    if (!focused && !saving) {
-      setValue(product.unit_price == null ? '' : String(product.unit_price));
-    }
-  }, [product.unit_price, focused, saving]);
-
-  async function savePrice() {
-    if (saving) return;
-    const raw = value.trim().replace(',', '.');
-    const parsed = Number(raw);
-    if (!raw || !Number.isFinite(parsed) || parsed < 0 ||
-        !/^\d+(\.\d{1,2})?$/.test(raw)) {
-      setValue(product.unit_price == null ? '' : String(product.unit_price));
-      return;
-    }
-    if (parsed === Number(product.unit_price)) return;
-    setSaving(true);
-    try {
-      const ok = await onSave(product.id, parsed);
-      if (!ok) setValue(product.unit_price == null ? '' : String(product.unit_price));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <View style={[styles.quantityCell, styles.priceColumn, missing && styles.missingPriceCell]}>
-      <TextInput
-        value={value}
-        onChangeText={setValue}
-        onFocus={() => setFocused(true)}
-        onBlur={() => { setFocused(false); void savePrice(); }}
-        onSubmitEditing={() => void savePrice()}
-        keyboardType="decimal-pad"
-        placeholder="Нет цены"
-        placeholderTextColor="#F38A94"
-        selectTextOnFocus
-        editable={!saving}
-        style={[styles.quantityInput, missing && styles.missingPriceInput]}
-      />
-    </View>
-  );
-}
-
-function QuantityCell({
-  cell,
   onSave,
+
 }: {
-  cell: Cell;
-  onSave: (cell: Cell, quantity: number) => Promise<boolean>;
+
+  value: number;
+
+  disabled: boolean;
+
+  onSave: (quantity: number) => Promise<boolean>;
+
 }) {
-  const [text, setText] = useState(String(cell.value));
-  const [saving, setSaving] = useState(false);
+
+  const [text, setText] = useState(String(value));
+
   const [focused, setFocused] = useState(false);
+
+  const [saving, setSaving] = useState(false);
+
   const savingRef = useRef(false);
 
   useEffect(() => {
-    if (!focused && !saving) {
-      setText(String(cell.value));
-    }
-  }, [cell.value, focused, saving]);
+
+    if (!focused && !saving) setText(String(value));
+
+  }, [value, focused, saving]);
 
   async function save() {
-    if (savingRef.current || !cell.editable) return;
 
-    const normalized = text.trim().replace(',', '.');
-    const quantity = Number(normalized);
+    if (disabled || savingRef.current) return;
 
-    if (
-      normalized === '' ||
-      !Number.isFinite(quantity) ||
-      quantity < 0
-    ) {
-      console.error('Некорректное количество');
-      setText(String(cell.value));
+    const raw = text.trim().replace(",", ".");
+
+    const parsed = Number(raw);
+
+    if (!raw || !/^\d+(\.\d{1,3})?$/.test(raw) || !Number.isFinite(parsed)) {
+
+      setText(String(value));
+
       return;
+
     }
 
-    if (quantity === cell.value) return;
+    if (parsed === value) return;
 
     savingRef.current = true;
+
     setSaving(true);
 
     try {
-      const success = await onSave(cell, quantity);
 
-      if (!success) {
-        setText(String(cell.value));
-      }
-    } catch (error) {
-      console.error('Ошибка сохранения:', error);
-      setText(String(cell.value));
+      if (!(await onSave(parsed))) setText(String(value));
+
+    } catch {
+
+      setText(String(value));
+
     } finally {
-      savingRef.current = false;
-      setSaving(false);
-    }
-  }
 
-  if (!cell.editable) {
-    return (
-      <View style={[styles.quantityCell, styles.disabledCell]}>
-        <Text style={styles.muted}>—</Text>
-      </View>
-    );
+      savingRef.current = false;
+
+      setSaving(false);
+
+    }
+
   }
 
   return (
-    <View style={styles.quantityCell}>
+
+    <View style={[os.cell, { padding: 3, justifyContent: "center" }]}>
+
       <TextInput
+
+        accessibilityLabel="Количество для ресторана"
+
         value={text}
+
         onChangeText={setText}
+
         onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
+
+        onBlur={() => { setFocused(false); void save(); }}
+
         onSubmitEditing={() => void save()}
+
         keyboardType="decimal-pad"
-        returnKeyType="done"
-        blurOnSubmit={false}
+
         selectTextOnFocus
-        editable={!saving}
-        style={[
-          styles.quantityInput,
-          focused && styles.focusedInput,
-        ]}
+
+        editable={!disabled && !saving}
+
+        style={{ color: disabled ? "#888" : "#fff", backgroundColor: "#292b30", borderColor: focused ? "#c7a56b" : "#505056", borderWidth: 1, borderRadius: 5, textAlign: "center", minHeight: 34, padding: 3 }}
+
       />
-      {saving && (
-        <ActivityIndicator
-          size="small"
-          color="#C7A56B"
-          style={styles.savingIndicator}
-        />
-      )}
+
     </View>
+
   );
+
 }
 
 
-export default function AdminOrdersScreen() {
-  const [locations, setLocations] = useState<Location[]>([]);
-  const [errorMessage, setErrorMessage] = useState('');
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [items, setItems] = useState<OrderItem[]>([]);
 
-  const [week, setWeek] = useState('');
-  const [supplierId, setSupplierId] = useState('all');
-  const [categoryFilter, setCategoryFilter] = useState('all');
-  const [hideZero, setHideZero] = useState(true);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+function CatalogAmountCell({
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError('');
+  value,
+
+  disabled,
+
+  label,
+
+  onSave,
+
+}: {
+
+  value: string | null | undefined;
+
+  disabled: boolean;
+
+  label: string;
+
+  onSave: (amount: string | null) => Promise<boolean>;
+
+}) {
+
+  const original = value ?? "";
+
+  const [text, setText] = useState(original);
+
+  const [focused, setFocused] = useState(false);
+
+  const [saving, setSaving] = useState(false);
+
+  const lock = useRef(false);
+
+  useEffect(() => {
+
+    if (!focused && !saving) setText(original);
+
+  }, [original, focused, saving]);
+
+  async function save() {
+
+    if (disabled || lock.current) return;
+
+    const normalized = text.trim().replace(",", ".");
+
+    if (normalized && (!/^\d+(\.\d{1,2})?$/.test(normalized) || !Number.isFinite(Number(normalized)))) {
+
+      setText(original);
+
+      return;
+
+    }
+
+    const next = normalized ? String(Number(normalized)) : null;
+
+    if ((next ?? "") === (original ? String(Number(original)) : "")) return;
+
+    lock.current = true;
+
+    setSaving(true);
 
     try {
-      const [
-        locationsResult,
-        suppliersResult,
-        productsResult,
-        ordersResult,
-        itemsResult,
-      ] = await Promise.all([
-        supabase.from('order_locations').select('id,name'),
-        supabase.from('order_suppliers').select('id,name'),
-        supabase
-          .from('order_products')
-          .select('id,name,supplier_id,category,unit_price'),
-        supabase
-          .from('weekly_orders')
-          .select('id,location_id,week_start,status'),
-        supabase
-          .from('weekly_order_items')
-          .select(
-            'id,order_id,product_id,quantity,supplier_id_snapshot'
-          ),
-      ]);
 
-      const results = [
-        locationsResult,
-        suppliersResult,
-        productsResult,
-        ordersResult,
-        itemsResult,
-      ];
+      if (!(await onSave(next))) setText(original);
 
-      const failed = results.find((result) => result.error);
+    } catch {
 
-      if (failed?.error) throw failed.error;
+      setText(original);
 
-      setLocations(locationsResult.data ?? []);
-      setSuppliers(suppliersResult.data ?? []);
-      setProducts(productsResult.data ?? []);
-      setOrders(ordersResult.data ?? []);
-      setItems(itemsResult.data ?? []);
-    } catch (e: any) {
-      setError(e?.message ?? String(e));
     } finally {
-      setLoading(false);
+
+      lock.current = false;
+
+      setSaving(false);
+
     }
-  }, []);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  const weeks = useMemo(
-    () =>
-      [...new Set(orders.map((o) => o.week_start))]
-        .filter(Boolean)
-        .sort()
-        .reverse(),
-    [orders]
-  );
-
-  useEffect(() => {
-    if (weeks.length && !weeks.includes(week)) {
-      setWeek(weeks[0]);
-    }
-  }, [weeks, week]);
-
-  const weekOrders = useMemo(
-    () => orders.filter((o) => o.week_start === week),
-    [orders, week]
-  );
-
-  const categories = useMemo(
-  () =>
-    [...new Set(
-      products.map(p => p.category?.trim() || 'Без раздела')
-    )].sort((a, b) => a.localeCompare(b, 'ru')),
-  [products]
-);
-
-  const matrix = useMemo(() => {
-    return products
-      .map((product) => {
-        const productItems = items.filter(
-          (item) => item.product_id === product.id
-        );
-
-        const supplier =
-          productItems.find(
-            (item) =>
-              weekOrders.some((o) => o.id === item.order_id) &&
-              item.supplier_id_snapshot
-          )?.supplier_id_snapshot ?? product.supplier_id;
-
-        const cells: Cell[] = locations.map((location) => {
-          const matchingOrders = weekOrders.filter(
-            (order) => order.location_id === location.id
-          );
-
-          const matchingItems = productItems.filter((item) =>
-            matchingOrders.some((o) => o.id === item.order_id)
-          );
-
-          return {
-  key: `${product.id}:${location.id}`,
-  itemId:
-    matchingItems.length === 1
-      ? matchingItems[0].id
-      : null,
-  productId: product.id,
-  locationId: location.id,
-  value: matchingItems.reduce(
-    (sum, item) => sum + Number(item.quantity),
-    0
-  ),
-  editable: matchingItems.length <= 1,
-};
-        });
-
-        return {
-          ...product,
-          supplier,
-          cells,
-          total: cells.reduce((sum, cell) => sum + cell.value, 0),
-        };
-      })
-      .filter(
-        (product) =>
-          (supplierId === 'all' || product.supplier === supplierId) &&
-          (categoryFilter === 'all' ||
-            (product.category?.trim() || 'Без раздела') === categoryFilter) &&
-          (!hideZero || product.total !== 0)
-      )
-      .sort((a, b) => {
-        const categoryA = a.category?.trim() || 'Без раздела';
-        const categoryB = b.category?.trim() || 'Без раздела';
-        const categoryComparison = categoryA.localeCompare(categoryB, 'ru');
-        return categoryComparison || a.name.localeCompare(b.name, 'ru');
-      });
-  }, [
-    products,
-    items,
-    locations,
-    weekOrders,
-    supplierId,
-    categoryFilter,
-    hideZero,
-  ]);
-  
-  const groupedMatrix = useMemo(() => {
-    const groups: { category: string; products: typeof matrix }[] = [];
-    for (const product of matrix) {
-      const category = product.category?.trim() || 'Без раздела';
-      let group = groups.find((entry) => entry.category === category);
-      if (!group) {
-        group = { category, products: [] };
-        groups.push(group);
-      }
-      group.products.push(product);
-    }
-    return groups;
-  }, [matrix]);
-
-async function addOrderItem(
-  locationId: string,
-  productId: string,
-  quantity: number
-) {
-  const { error } = await supabase.rpc(
-    'admin_set_order_quantity',
-    {
-      p_location_id: locationId,
-      p_week_start: week,
-      p_product_id: productId,
-      p_quantity: quantity,
-    }
-  );
-
-  if (error) {
-    console.error('Ошибка добавления:', error);
-    setErrorMessage(error.message);
-    return false;
   }
-
-  await load();
-  return true;
-}
-  async function saveProductPrice(productId: string, price: number) {
-    setErrorMessage('');
-    const { error: priceError } = await supabase.rpc(
-      'admin_update_order_product_price',
-      { p_product_id: productId, p_price: price }
-    );
-    if (priceError) {
-      setErrorMessage('Не удалось сохранить цену: ' + priceError.message);
-      return false;
-    }
-    setProducts(current => current.map(p =>
-      p.id === productId ? { ...p, unit_price: price } : p
-    ));
-    return true;
-  }
-
-  async function saveQuantity(itemId: string, quantity: number) {
-    const original = items.find((item) => item.id === itemId);
-    if (!original) return false;
-
-    const { data, error: updateError } = await supabase
-    
-      .from('weekly_order_items')
-      .update({ quantity })
-      .eq('id', itemId)
-      .eq('quantity', original.quantity)
-      .select('id,quantity')
-      .maybeSingle();
-console.log('SUPABASE UPDATE:', {
-  itemId,
-  quantity,
-  data,
-  error: updateError,
-});
-    if (updateError || !data) {
-      Alert.alert(
-        'Не удалось сохранить',
-        updateError?.message ??
-          'Позиция уже изменилась или нет доступа. Обновите таблицу.'
-      );
-      return false;
-    }
-
-    setItems((current) =>
-      current.map((item) =>
-        item.id === itemId ? { ...item, quantity } : item
-      )
-    );
-
-    return true;
-  }
-async function saveCell(cell: Cell, quantity: number) {
-  setErrorMessage('');
-
-  if (cell.itemId) {
-    const success = await saveQuantity(cell.itemId, quantity);
-
-    if (!success) {
-      setErrorMessage('Не удалось изменить количество.');
-    }
-
-    return success;
-  }
-
-  if (quantity === 0) return true;
-
-  return addOrderItem(
-    cell.locationId,
-    cell.productId,
-    quantity
-  );
-}
-  if (loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color="#C7A56B" />
-        <Text style={styles.muted}>Загрузка заказов...</Text>
-      </View>
-    );
-  }
-
-  if (error) {
-    return (
-      <View style={styles.center}>
-        <Text style={styles.error}>{error}</Text>
-        <TouchableOpacity onPress={() => void load()}>
-          <Text style={styles.link}>Повторить</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
-  const PageWrapper = Platform.OS === 'web' ? View : ScrollView;
 
   return (
-    <PageWrapper
-      style={[styles.container, Platform.OS === 'web' && styles.webPageScroll]}
-      {...(Platform.OS !== 'web' ? {
-        contentContainerStyle: styles.pageContent,
-        keyboardShouldPersistTaps: 'handled' as const,
-      } : {})}
-    >
-      <View style={Platform.OS === 'web' ? styles.pageContent : undefined}>
-        {!!errorMessage && (
-  <Text style={styles.error}>
-    {errorMessage}
-  </Text>
-)}
-      <View style={styles.topBar}>
-        <View>
-          <Text style={styles.title}>Общий заказ</Text>
-          <Text style={styles.subtitle}>
-            Bar Manager · Панель администратора
-          </Text>
-        </View>
 
-        <TouchableOpacity
-          style={styles.refreshButton}
-          onPress={() => void load()}
-        >
-          <Text style={styles.refreshText}>Обновить</Text>
-        </TouchableOpacity>
-      </View>
+    <View style={[os.cell, { padding: 3, justifyContent: "center" }]}>
 
-      <Text style={styles.label}>Неделя заказа</Text>
-      <ScrollView
-        horizontal
-        style={styles.filterScroll}
-        contentContainerStyle={styles.filterRow}
-      >
-        {weeks.map((w) => (
-          <TouchableOpacity
-            key={w}
-            style={[
-              styles.filterButton,
-              week === w && styles.selectedFilter,
-            ]}
-            onPress={() => setWeek(w)}
-          >
-            <Text style={styles.filterText}>{w}</Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+      <TextInput
 
-      <Text style={styles.label}>Поставщик</Text>
-      <ScrollView
-        horizontal
-        style={styles.filterScroll}
-        contentContainerStyle={styles.filterRow}
-      >
-        <TouchableOpacity
-          style={[
-            styles.filterButton,
-            supplierId === 'all' && styles.selectedFilter,
-          ]}
-          onPress={() => setSupplierId('all')}
-        >
-          <Text style={styles.filterText}>Все</Text>
-        </TouchableOpacity>
+        accessibilityLabel={label}
 
-        {suppliers.map((supplier) => (
-          <TouchableOpacity
-            key={supplier.id}
-            style={[
-              styles.filterButton,
-              supplierId === supplier.id &&
-                styles.selectedFilter,
-            ]}
-            onPress={() => setSupplierId(supplier.id)}
-          >
-            <Text style={styles.filterText}>
-              {supplier.name}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-<Text style={styles.label}>Раздел заказа</Text>
+        value={text}
 
-<ScrollView
-  horizontal
-  style={styles.filterScroll}
-  contentContainerStyle={styles.filterRow}
->
-  {['all', ...categories].map(category => (
-    <TouchableOpacity
-      key={category}
-      style={[
-        styles.filterButton,
-        categoryFilter === category && styles.selectedFilter,
-      ]}
-      onPress={() => setCategoryFilter(category)}
-    >
-      <Text style={styles.filterText}>
-        {category === 'all' ? 'Все разделы' : category}
-      </Text>
-    </TouchableOpacity>
-  ))}
-</ScrollView>
-      <TouchableOpacity
-        style={styles.toggleRow}
-        onPress={() => setHideZero(!hideZero)}
-      >
-        <Text style={styles.toggle}>
-          {hideZero ? '☑' : '☐'}
-        </Text>
-        <Text style={styles.toggleText}>
-          Скрыть нулевые строки
-        </Text>
-      </TouchableOpacity>
+        onChangeText={setText}
 
-      <ScrollView horizontal style={styles.tableScroll}>
-        <View>
-          <View style={styles.row}>
-            <Text style={[styles.headerCell, styles.productCell]}>
-              Наименование
-            </Text>
+        onFocus={() => setFocused(true)}
 
-            <Text style={[styles.headerCell, styles.priceColumn]}>Цена, ₽</Text>
+        onBlur={() => { setFocused(false); void save(); }}
 
-            {locations.map((location) => (
-              <Text
-                key={location.id}
-                style={styles.headerCell}
-              >
-                {location.name}
-              </Text>
-            ))}
+        onSubmitEditing={() => void save()}
 
-            <Text style={styles.headerCell}>Итого</Text>
-          </View>
+        keyboardType="decimal-pad"
 
-          <View>
-            {groupedMatrix.map((group) => (
-              <View key={group.category}>
-                <View style={styles.categoryRow}>
-                  <Text style={styles.categoryTitle}>
-                    {group.category.toUpperCase()} · {group.products.length} поз.
-                  </Text>
-                </View>
-                {group.products.map((product) => (
-                  <View key={product.id} style={styles.row}>
-                    <Text style={[styles.cell, styles.productCell]}>
-                      {product.name}
-                    </Text>
-                    <PriceCell product={product} onSave={saveProductPrice} />
-                    {product.cells.map((cell) => (
-                      <QuantityCell
-                        key={cell.key}
-                        cell={cell}
-                        onSave={saveCell}
-                      />
-                    ))}
-                    <Text style={[styles.cell, styles.total]}>
-                      {product.total}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-            ))}
+        selectTextOnFocus
 
-          </View>
-        </View>
-      </ScrollView>
+        placeholder="Не задано"
 
-      <Text style={styles.footer}>
-        Товаров в таблице: {matrix.length} ·
-        Ресторанов: {locations.length}
-      </Text>
-      <Text style={styles.hint}>
-        Нажми на количество или цену, введи число и нажми Enter
-        или перейди в другую ячейку.
-        Прочерк означает, что редактируемая строка заказа
-        отсутствует или есть несколько совпадений.
-      </Text>
-      </View>
-    </PageWrapper>
+        placeholderTextColor="#888"
+
+        editable={!disabled && !saving}
+
+        style={{ color: "#fff", backgroundColor: "#292b30", borderColor: focused ? "#c7a56b" : "#505056", borderWidth: 1, borderRadius: 5, minHeight: 34, padding: 4, textAlign: "center" }}
+
+      />
+
+    </View>
+
   );
+
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#151719',
-  },
-  webPageScroll: {
-    overflowY: 'auto',
-    overflowX: 'hidden',
-    height: '100vh',
-    flex: undefined,
-  } as any,
-  pageContent: {
-    padding: 24,
-    paddingBottom: 48,
-  },
-  center: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#151719',
-    gap: 12,
-  },
-  topBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  title: {
-    color: '#FFFFFF',
-    fontSize: 28,
-    fontWeight: '700',
-  },
-  subtitle: {
-    color: '#9CA3AF',
-    marginTop: 6,
-  },
-  refreshButton: {
-    borderWidth: 1,
-    borderColor: '#C7A56B',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
-  refreshText: {
-    color: '#C7A56B',
-    fontWeight: '600',
-  },
-  label: {
-    color: '#9CA3AF',
-    marginBottom: 8,
-  },
-  filterScroll: {
-    flexGrow: 0,
-    marginBottom: 18,
-  },
-  filterRow: {
-    gap: 8,
-    paddingRight: 16,
-  },
-  filterButton: {
-    backgroundColor: '#25292D',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#33383E',
-  },
-  selectedFilter: {
-    borderColor: '#C7A56B',
-    backgroundColor: '#3A3327',
-  },
-  filterText: {
-    color: '#FFFFFF',
-  },
-  toggleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-    gap: 10,
-  },
-  toggle: {
-    color: '#C7A56B',
-    fontSize: 22,
-  },
-  toggleText: {
-    color: '#FFFFFF',
-  },
-  tableScroll: {
-    flexGrow: 0,
-  },
-  categoryRow: {
-    backgroundColor: '#292B2E',
-    borderLeftWidth: 3,
-    borderLeftColor: '#C7A56B',
-    paddingVertical: 13,
-    paddingHorizontal: 16,
-    marginTop: 12,
-    marginBottom: 4,
-  },
-  categoryTitle: {
-    color: '#C7A56B',
-    fontSize: 14,
-    fontWeight: '700',
-    letterSpacing: 1,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    minHeight: 52,
-  },
-  headerCell: {
-    width: 125,
-    padding: 12,
-    color: '#C7A56B',
-    fontWeight: '700',
-    borderBottomWidth: 1,
-    borderColor: '#4A4F55',
-  },
-  cell: {
-    width: 125,
-    padding: 12,
-    color: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderColor: '#303438',
-  },
-  priceColumn: {
-    width: 130,
-  },
-  missingPriceCell: {
-    backgroundColor: '#4A252C',
-  },
-  missingPriceInput: {
-    borderColor: '#C95160',
-    color: '#FF8D99',
-    backgroundColor: '#382127',
-  },
-  productCell: {
-    width: 250,
-  },
-  quantityCell: {
-    width: 125,
-    height: 52,
-    padding: 5,
-    justifyContent: 'center',
-    borderBottomWidth: 1,
-    borderColor: '#303438',
-  },
-  quantityInput: {
-    height: 38,
-    backgroundColor: '#24282C',
-    borderWidth: 1,
-    borderColor: '#343A40',
-    borderRadius: 5,
-    color: '#FFFFFF',
-    textAlign: 'center',
-    fontSize: 15,
-    padding: 4,
-  },
-  focusedInput: {
-    borderColor: '#C7A56B',
-    backgroundColor: '#36342D',
-  },
-  disabledCell: {
-    alignItems: 'center',
-  },
-  savingIndicator: {
-    position: 'absolute',
-    right: 4,
-  },
-  total: {
-    color: '#C7A56B',
-    fontWeight: '700',
-  },
-  footer: {
-    color: '#9CA3AF',
-    marginTop: 12,
-  },
-  hint: {
-    color: '#6F7780',
-    fontSize: 12,
-    marginTop: 8,
-  },
-  muted: {
-    color: '#6F7780',
-  },
-  error: {
-    color: '#FF7777',
-    padding: 20,
-  },
-  link: {
-    color: '#C7A56B',
-  },
-});
+
+
+function SupplierDropdown({
+
+  value,
+
+  suppliers,
+
+  disabled,
+
+  productName,
+
+  onChange,
+
+}: {
+
+  value: string | null;
+
+  suppliers: Catalog["suppliers"];
+
+  disabled: boolean;
+
+  productName: string;
+
+  onChange: (supplierId: string | null) => Promise<boolean>;
+
+}) {
+
+  const [open, setOpen] = useState(false);
+
+  const [search, setSearch] = useState("");
+
+  const currentName = suppliers.find((s) => s.id === value)?.name ?? "Не указан";
+
+  const options = [{ id: "", name: "Не указан" }, ...suppliers]
+
+    .filter((s) => s.name.toLowerCase().includes(search.trim().toLowerCase()));
+
+
+
+  async function choose(id: string) {
+
+    setOpen(false);
+
+    setSearch("");
+
+    if ((id || null) !== value) await onChange(id || null);
+
+  }
+
+
+
+  return (
+
+    <View style={{ width: 230, padding: 3, justifyContent: "center" }}>
+
+      <TouchableOpacity
+
+        accessibilityRole="button"
+
+        accessibilityLabel={`Поставщик для ${productName}: ${currentName}`}
+
+        disabled={disabled}
+
+        onPress={() => setOpen(true)}
+
+        style={{ minHeight: 38, borderWidth: 1, borderColor: "#505056", borderRadius: 6, backgroundColor: "#292b30", paddingHorizontal: 10, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 6 }}
+
+      >
+
+        <Text numberOfLines={1} style={{ color: "#fff", flex: 1 }}>{currentName}</Text>
+
+        <Text style={{ color: "#c7a56b" }}>▾</Text>
+
+      </TouchableOpacity>
+
+      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+
+        <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "rgba(0,0,0,0.7)", padding: 20 }}>
+
+          <View style={{ width: "100%", maxWidth: 440, maxHeight: "80%", backgroundColor: "#202226", borderColor: "#505056", borderWidth: 1, borderRadius: 12, padding: 16 }}>
+
+            <Text style={{ color: "#fff", fontSize: 18, fontWeight: "700", marginBottom: 12 }}>Выбрать поставщика</Text>
+
+            <Text style={{ color: "#aaa", marginBottom: 10 }} numberOfLines={2}>{productName}</Text>
+
+            <TextInput
+
+              accessibilityLabel="Поиск поставщика"
+
+              value={search}
+
+              onChangeText={setSearch}
+
+              placeholder="Поиск поставщика…"
+
+              placeholderTextColor="#999"
+
+              style={{ color: "#fff", backgroundColor: "#303238", borderRadius: 7, padding: 10, marginBottom: 10 }}
+
+            />
+
+            <ScrollView keyboardShouldPersistTaps="handled" style={{ flexGrow: 0 }}>
+
+              {options.map((option) => (
+
+                <TouchableOpacity
+
+                  key={option.id || "none"}
+
+                  onPress={() => void choose(option.id)}
+
+                  style={{ paddingVertical: 12, paddingHorizontal: 8, borderBottomWidth: 1, borderBottomColor: "#383a40", flexDirection: "row", justifyContent: "space-between" }}
+
+                >
+
+                  <Text style={{ color: "#fff", flex: 1 }}>{option.name}</Text>
+
+                  {(value ?? "") === option.id && <Text style={{ color: "#c7a56b" }}>✓</Text>}
+
+                </TouchableOpacity>
+
+              ))}
+
+              {!options.length && <Text style={{ color: "#aaa", padding: 12 }}>Поставщики не найдены</Text>}
+
+            </ScrollView>
+
+            <TouchableOpacity onPress={() => { setOpen(false); setSearch(""); }} style={{ padding: 12, marginTop: 12, alignItems: "center" }}>
+
+              <Text style={{ color: "#c7a56b", fontWeight: "600" }}>Отмена</Text>
+
+            </TouchableOpacity>
+
+          </View>
+
+        </View>
+
+      </Modal>
+
+    </View>
+
+  );
+
+}
+
+
+
+export function OrdersAdmin({
+
+  context,
+
+  catalog,
+
+  setCatalog,
+
+  week,
+
+}: {
+
+  context: OrderContext;
+
+  catalog: Catalog;
+
+  setCatalog: (c: Catalog) => void;
+
+  week: string;
+
+}) {
+
+  const [tab, setTab] = useState("orders");
+
+  const [orders, setOrders] = useState<Order[]>([]);
+
+  const [error, setError] = useState("");
+
+  const [loading, setLoading] = useState(true);
+
+  const [busy, setBusy] = useState(false);
+
+  const [reload, setReload] = useState(0);
+
+  const [filters, setFilters] = useState<Filters>(emptyFilters);
+
+  const [editKind, setEditKind] = useState("supplier");
+
+  const [query, setQuery] = useState("");
+
+  const [message, setMessage] = useState("");
+
+  const [showAllProducts, setShowAllProducts] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [androidLocationIndex, setAndroidLocationIndex] = useState(0);
+  const isAndroid = Platform.OS === "android";
+  const selectedLocation = context.locations[Math.min(androidLocationIndex, Math.max(0, context.locations.length - 1))];
+
+  // Clear selection when the remote reporting period changes.
+
+  useEffect(() => {
+
+    let active = true;
+
+    setLoading(true);
+
+    setError("");
+
+    ordersRpc<Order[]>("bm_orders_dashboard", { p_week: week })
+
+      .then((rows) => {
+
+        if (active) setOrders(rows);
+
+      })
+
+      .catch((e) => {
+
+        if (active) setError(orderError(e));
+
+      })
+
+      .finally(() => {
+
+        if (active) setLoading(false);
+
+      });
+
+    return () => {
+
+      active = false;
+
+    };
+
+  }, [week, reload]);
+
+  const rows = new Map<string, SummaryRow>();
+
+  for (const o of orders.filter((o) =>
+
+    ["submitted", "approved"].includes(o.status),
+
+  )) {
+
+    for (const it of o.items || []) {
+
+      const key = JSON.stringify([
+
+        it.product_id,
+
+        it.product_name_snapshot,
+
+        it.supplier_id_snapshot,
+
+        it.unit_price_snapshot,
+
+        it.unit_snapshot,
+
+        it.category_snapshot,
+
+      ]);
+
+      const row = rows.get(key) || {
+
+        key,
+
+        productId: it.product_id,
+
+        name: it.product_name_snapshot,
+
+        supplier: it.supplier_name_snapshot || "Не указан",
+
+        supplierId: it.supplier_id_snapshot,
+
+        category: it.category_snapshot || "Без раздела",
+
+        price: it.unit_price_snapshot,
+
+        quantities: {},
+
+        total: 0,
+
+        amount: 0,
+
+      };
+
+      const q = Number(it.quantity);
+
+      row.quantities[o.location_id] = (row.quantities[o.location_id] || 0) + q;
+
+      row.total += q;
+
+      const cents =
+
+        it.unit_price_snapshot === null
+
+          ? null
+
+          : decimalUnits(it.unit_price_snapshot, 2);
+
+      const units = decimalUnits(it.quantity, 3);
+
+      if (cents !== null && units !== null)
+
+        row.amount += Number((cents * units + 500n) / 1000n) / 100;
+
+      rows.set(key, row);
+
+    }
+
+  }
+
+  // Add products not present in any submitted order, only when requested.
+
+  if (showAllProducts) {
+
+    const existingProductIds = new Set([...rows.values()].map((r) => r.productId));
+    const suppliersById = new Map(catalog.suppliers.map((supplier) => [supplier.id, supplier]));
+    for (const p of catalog.products) {
+
+      if (existingProductIds.has(p.id)) continue;
+
+      const sp = suppliersById.get(p.supplier_id ?? "");
+
+      const key = JSON.stringify(["catalog", p.id]);
+
+      rows.set(key, {
+
+        key,
+
+        productId: p.id,
+
+        name: p.name,
+
+        supplier: sp?.name || "Не указан",
+
+        supplierId: p.supplier_id,
+
+        category: p.category || "Без раздела",
+
+        price: p.unit_price,
+
+        quantities: {},
+
+        total: 0,
+
+        amount: 0,
+
+      });
+
+    }
+
+  }
+
+  const productRowCounts = new Map<string, number>();
+
+  for (const r of rows.values()) {
+
+    productRowCounts.set(r.productId, (productRowCounts.get(r.productId) || 0) + 1);
+
+  }
+
+  async function saveAdminQuantity(productId: string, locationId: string, quantity: number) {
+
+    if (busy) return false;
+
+    setBusy(true);
+
+    setError("");
+
+    setMessage("");
+
+    try {
+
+      // Requires the matching administrator-only RPC in Supabase.
+
+      await ordersRpc("bm_orders_admin_set_quantity", {
+
+        p_week: week,
+
+        p_location_id: locationId,
+
+        p_product_id: productId,
+
+        p_quantity: quantity,
+
+      });
+
+      setReload((n) => n + 1);
+
+      return true;
+
+    } catch (e) {
+
+      setError("Не удалось сохранить количество: " + orderError(e));
+
+      return false;
+
+    } finally {
+
+      setBusy(false);
+
+    }
+
+  }
+
+  const summary = [...rows.values()]
+
+    .filter(
+
+      (r) =>
+
+        (!filters.supplierId || r.supplierId === filters.supplierId) &&
+
+        (!filters.category || r.category === filters.category) &&
+
+        r.name.toLowerCase().includes(filters.query.toLowerCase()) &&
+
+        (!filters.minPrice ||
+
+          (r.price !== null &&
+
+            Number(r.price) >= Number(filters.minPrice.replace(",", ".")))) &&
+
+        (!filters.maxPrice ||
+
+          (r.price !== null &&
+
+            Number(r.price) <= Number(filters.maxPrice.replace(",", ".")))),
+
+    )
+
+    .sort((a, b) =>
+
+      filters.sort
+
+        ? (Number(a.price) - Number(b.price)) *
+
+          (filters.sort === "price_desc" ? -1 : 1)
+
+        : a.name.localeCompare(b.name, "ru"),
+
+    );
+
+  // Export from the complete order summary, independent of on-screen filters.
+  // Each location keeps its own quantity column.
+  const exportRows = [...rows.values()]
+    .filter((r) => r.total > 0)
+    .sort((a, b) => a.name.localeCompare(b.name, "ru"));
+
+  const exportSuppliers = [...new Map(
+    exportRows.map((r) => [
+      r.supplierId ?? `unknown:${r.supplier}`,
+      { id: r.supplierId, name: r.supplier },
+    ] as const),
+  ).values()].sort((a, b) => a.name.localeCompare(b.name, "ru"));
+
+  async function downloadAll() {
+    if (loading || busy || exporting) return;
+    setExporting(true);
+    setError("");
+    try {
+      await exportAllSuppliersZip(exportRows, context.locations, week);
+    } catch (e) {
+      setError("Не удалось выгрузить заказы: " + orderError(e));
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function downloadSupplier(id: string | null, name: string) {
+    if (loading || busy || exporting) return;
+    setExporting(true);
+    setError("");
+    try {
+      const supplierRows = exportRows.filter((r) =>
+        id === null
+          ? r.supplierId === null && r.supplier === name
+          : r.supplierId === id,
+      );
+      await exportSupplierExcel(supplierRows, context.locations, name, week);
+    } catch (e) {
+      setError("Не удалось выгрузить поставщика: " + orderError(e));
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function approveOrder(order: Order) {
+
+    if (busy || order.status !== "submitted") return;
+
+    setBusy(true);
+
+    setError("");
+
+    setMessage("");
+
+    try {
+
+      await ordersRpc("bm_orders_review", {
+
+        p_order: order.id,
+
+        p_revision: order.revision,
+
+        p_action: "approved",
+
+        p_comment: "",
+
+      });
+
+      setMessage("Заказ подтверждён.");
+
+      setReload((n) => n + 1);
+
+    } catch (e) {
+
+      setError("Не удалось подтвердить заказ: " + orderError(e));
+
+    } finally {
+
+      setBusy(false);
+
+    }
+
+  }
+
+  async function returnOrderToBartender(order: Order) {
+
+    if (busy || order.status !== "approved") return;
+
+    setBusy(true);
+
+    setError("");
+
+    setMessage("");
+
+    try {
+
+      await ordersRpc("bm_orders_review", {
+
+        p_order: order.id,
+
+        p_revision: order.revision,
+
+        p_action: "revision_requested",
+
+        p_comment: "Подтверждение отменено администратором. Заказ возвращён на заполнение.",
+
+      });
+
+      setMessage("Подтверждение отменено. Заказ возвращён бармену на заполнение.");
+
+      setReload((n) => n + 1);
+
+    } catch (e) {
+
+      setError("Не удалось отменить подтверждение: " + orderError(e));
+
+    } finally {
+
+      setBusy(false);
+
+    }
+
+  }
+
+  async function saveCatalogCell(
+
+    kind: "supplier" | "product",
+
+    id: string,
+
+    nextAmount: string | null,
+
+    supplierId: string | null = null,
+
+  ): Promise<boolean> {
+
+    if (busy) return false;
+
+    setBusy(true);
+
+    setError("");
+
+    setMessage("");
+
+    try {
+
+      await ordersRpc("bm_orders_catalog_edit", {
+
+        p_kind: kind,
+
+        p_id: id,
+
+        p_amount: nextAmount,
+
+        p_supplier: kind === "product" ? supplierId : null,
+
+      });
+
+      setCatalog(await ordersRpc<Catalog>("bm_orders_catalog"));
+
+      setMessage("Каталог обновлён. В отправленных заказах прежние цены сохранены.");
+
+      return true;
+
+    } catch (e) {
+
+      setError("Не удалось сохранить изменение: " + orderError(e));
+
+      return false;
+
+    } finally {
+
+      setBusy(false);
+
+    }
+
+  }
+
+  return (
+
+    <ScrollView
+
+      keyboardShouldPersistTaps="handled"
+
+      contentContainerStyle={os.content}
+
+    >
+
+      <Choice
+
+        value={tab}
+
+        options={[
+
+          { id: "orders", name: "Заказы и сводка" },
+
+          { id: "catalog", name: "Цены и минимумы" },
+
+        ]}
+
+        onChange={setTab}
+
+        disabled={busy}
+
+      />
+
+      {!!error && (
+
+        <Text accessibilityRole="alert" style={os.error}>
+
+          {error}
+
+        </Text>
+
+      )}
+
+      {!!message && <Text style={os.success}>{message}</Text>}
+
+      {tab === "orders" ? (
+
+        <>
+
+          <Text style={os.title}>Сводный заказ</Text>
+
+          <Text style={os.muted}>
+
+            Сводка отправленных и подтверждённых заказов. При включении галочки
+
+            также показываются товары из каталога. Товары с несколькими ценами
+
+            временно недоступны для изменения количества.
+
+          </Text>
+
+          <OrderFilters
+
+            filters={filters}
+
+            onChange={setFilters}
+
+            suppliers={catalog.suppliers}
+
+            categories={[...new Set([...rows.values()].map((r) => r.category))]}
+
+            showShortage={false}
+
+          />
+
+          <TouchableOpacity
+
+            accessibilityRole="checkbox"
+
+            accessibilityState={{ checked: showAllProducts }}
+
+            onPress={() => setShowAllProducts((v) => !v)}
+
+            style={{ flexDirection: "row", alignItems: "center", paddingVertical: 12, gap: 10 }}
+
+          >
+
+            <Text style={{ color: "#c7a56b", fontSize: 21 }}>{showAllProducts ? "☑" : "☐"}</Text>
+
+            <Text style={os.text}>Показать все товары</Text>
+
+          </TouchableOpacity>
+
+          <View style={{ gap: 8, marginVertical: 12 }}>
+          <Text style={os.heading}>Экспорт заказов в Excel</Text>
+          <OButton
+            title={exporting ? "Подготавливаем файлы…" : "Скачать все заказы (ZIP)"}
+            disabled={loading || busy || exporting || !exportRows.length}
+            onPress={() => void downloadAll()}
+          />
+          {exportSuppliers.map((supplier) => (
+            <OButton
+              key={supplier.id ?? `unknown:${supplier.name}`}
+              title={`Excel · ${supplier.name}`}
+              disabled={loading || busy || exporting}
+              onPress={() => void downloadSupplier(supplier.id, supplier.name)}
+            />
+          ))}
+          <Text style={os.muted}>
+            Отдельный Excel для каждого поставщика: товары слева, рестораны сверху, количество в ячейках.
+          </Text>
+        </View>
+        <Text style={os.muted}>Нажмите на количество, чтобы изменить его. Сохранение — Enter или переход в другую ячейку.</Text>
+
+          {isAndroid ? (
+            <View style={{ gap: 10, marginBottom: 12 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                <TouchableOpacity
+                  accessibilityLabel="Предыдущий ресторан"
+                  disabled={androidLocationIndex === 0 || busy}
+                  onPress={() => setAndroidLocationIndex((index) => Math.max(0, index - 1))}
+                  style={{ paddingHorizontal: 16, paddingVertical: 10, backgroundColor: "#292b30", borderRadius: 8, opacity: androidLocationIndex === 0 ? 0.4 : 1 }}
+                >
+                  <Text style={os.text}>‹</Text>
+                </TouchableOpacity>
+                <View style={{ flex: 1, alignItems: "center" }}>
+                  <Text style={os.heading} numberOfLines={2}>{selectedLocation?.name ?? "Нет ресторанов"}</Text>
+                  <Text style={os.muted}>{context.locations.length ? `${Math.min(androidLocationIndex + 1, context.locations.length)} из ${context.locations.length}` : ""}</Text>
+                </View>
+                <TouchableOpacity
+                  accessibilityLabel="Следующий ресторан"
+                  disabled={androidLocationIndex >= context.locations.length - 1 || busy}
+                  onPress={() => setAndroidLocationIndex((index) => Math.min(context.locations.length - 1, index + 1))}
+                  style={{ paddingHorizontal: 16, paddingVertical: 10, backgroundColor: "#292b30", borderRadius: 8, opacity: androidLocationIndex >= context.locations.length - 1 ? 0.4 : 1 }}
+                >
+                  <Text style={os.text}>›</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={{ flexDirection: "row", backgroundColor: "#25272b" }}>
+                <Text style={[os.cell, { flex: 1.7, width: undefined }]}>Товар / поставщик</Text>
+                <Text style={[os.cell, { flex: 0.8, width: undefined }]}>Цена</Text>
+                <Text style={[os.cell, { flex: 0.9, width: undefined }]}>Кол-во</Text>
+              </View>
+              <FlatList
+                data={summary}
+                keyExtractor={(row) => row.key}
+                style={{ height: 470, flexGrow: 0 }}
+                nestedScrollEnabled
+                keyboardShouldPersistTaps="handled"
+                initialNumToRender={12}
+                maxToRenderPerBatch={8}
+                windowSize={5}
+                removeClippedSubviews
+                renderItem={({ item: row }) => (
+                  <View style={{ flexDirection: "row", alignItems: "center", minHeight: 55 }}>
+                    <Text style={[os.cell, { flex: 1.7, width: undefined }]} numberOfLines={3}>{row.name}{"\n"}{row.supplier}</Text>
+                    <Text style={[os.cell, { flex: 0.8, width: undefined }]}>{row.price ?? "—"}</Text>
+                    <View style={{ flex: 0.9 }}>
+                      {selectedLocation ? (
+                        <AdminQuantityCell
+                          key={`${row.key}:${selectedLocation.id}`}
+                          value={row.quantities[selectedLocation.id] ?? 0}
+                          disabled={busy || loading || (productRowCounts.get(row.productId) || 0) > 1}
+                          onSave={(quantity) => saveAdminQuantity(row.productId, selectedLocation.id, quantity)}
+                        />
+                      ) : null}
+                    </View>
+                  </View>
+                )}
+              />
+              <Text style={os.muted}>Товаров: {summary.length} · Всего по выбранному ресторану: {selectedLocation ? summary.reduce((sum, row) => sum + (row.quantities[selectedLocation.id] ?? 0), 0) : 0}</Text>
+            </View>
+          ) : (
+          <ScrollView horizontal>
+
+            <View>
+
+              <View style={{ flexDirection: "row" }}>
+
+                <Text style={[os.cell, os.nameCell]}>Товар / поставщик</Text>
+
+                <Text style={os.cell}>Цена</Text>
+
+                {context.locations.map((l) => (
+
+                  <Text key={l.id} style={os.cell}>
+
+                    {l.name}
+
+                  </Text>
+
+                ))}
+
+                <Text style={os.cell}>Всего</Text>
+
+                <Text style={os.cell}>Сумма ₽</Text>
+
+              </View>
+
+              {summary.map((r) => (
+
+                <View key={r.key} style={{ flexDirection: "row" }}>
+
+                  <Text style={[os.cell, os.nameCell]}>
+
+                    {r.name}
+
+                    {"\n"}
+
+                    {r.supplier}
+
+                  </Text>
+
+                  <Text style={os.cell}>{r.price ?? "—"}</Text>
+
+                  {context.locations.map((l) => (
+
+                    <AdminQuantityCell
+
+                      key={`${r.key}:${l.id}`}
+
+                      value={r.quantities[l.id] ?? 0}
+
+                      disabled={busy || loading || (productRowCounts.get(r.productId) || 0) > 1}
+
+                      onSave={(quantity) => saveAdminQuantity(r.productId, l.id, quantity)}
+
+                    />
+
+                  ))}
+
+                  <Text style={os.cell}>{Number(r.total.toFixed(3))}</Text>
+
+                  <Text style={os.cell}>{r.amount.toFixed(2)}</Text>
+
+                </View>
+
+              ))}
+
+            </View>
+
+          </ScrollView>
+
+          )}
+
+          {!summary.length && (
+
+            <Text style={os.muted}>В сводке пока нет товаров.</Text>
+
+          )}
+
+          <Text style={os.heading}>
+
+            Итог всей сводки:{" "}
+
+            {[...rows.values()].reduce((n, r) => n + r.amount, 0).toFixed(2)} ₽
+
+          </Text>
+
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+
+            <Text style={os.heading}>Рестораны · неделя {week}</Text>
+
+            <OButton
+
+              title={loading ? "Обновляем…" : "Обновить заказы"}
+
+              disabled={loading || busy}
+
+              onPress={() => setReload((n) => n + 1)}
+
+            />
+
+          </View>
+
+          {!loading && (
+
+            <View style={{ gap: 5 }}>
+
+              {context.locations.map((l) => {
+
+                const order = orders.find((o) => o.location_id === l.id);
+
+                const submitted = order?.status === "submitted";
+
+                const approved = order?.status === "approved";
+
+                return (
+
+                  <View
+
+                    key={l.id}
+
+                    style={{
+
+                      flexDirection: "row",
+
+                      alignItems: "center",
+
+                      justifyContent: "space-between",
+
+                      flexWrap: "wrap",
+
+                      gap: 8,
+
+                      paddingVertical: 7,
+
+                      paddingHorizontal: 10,
+
+                      borderWidth: 1,
+
+                      borderColor: "#383a40",
+
+                      borderRadius: 7,
+
+                      backgroundColor: "#202226",
+
+                    }}
+
+                  >
+
+                    <View style={{ flex: 1, minWidth: 145 }}>
+
+                      <Text style={[os.text, { fontWeight: "600" }]}>{l.name}</Text>
+
+                      <Text style={os.muted}>
+
+                        {order ? orderStatus[order.status] : "Заказ ещё не создан"}
+
+                      </Text>
+
+                    </View>
+
+                    {submitted ? (
+
+                      <OButton
+
+                        title="Подтвердить заказ"
+
+                        disabled={busy}
+
+                        onPress={() => void approveOrder(order)}
+
+                      />
+
+                    ) : approved && order ? (
+
+                      <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+
+                        <Text style={[os.muted, { color: "#87c99b" }]}>✓ Подтверждён</Text>
+
+                        <OButton
+
+                          title="Отменить подтверждение"
+
+                          disabled={busy}
+
+                          onPress={() => void returnOrderToBartender(order)}
+
+                        />
+
+                      </View>
+
+                    ) : (
+
+                      <Text style={os.muted}>Ожидает отправки</Text>
+
+                    )}
+
+                  </View>
+
+                );
+
+              })}
+
+            </View>
+
+          )}
+
+        </>
+
+      ) : (
+
+        <>
+
+          <Text style={os.heading}>Настройка каталога</Text>
+
+          <Text style={os.muted}>
+
+            Пустая сумма означает «не задана» и блокирует отправку выбранных
+
+            товаров. Для поставщика без минимума укажите 0.
+
+          </Text>
+
+          <Choice
+
+            value={editKind}
+
+            options={[
+
+              { id: "supplier", name: "Минимумы поставщиков" },
+
+              { id: "product", name: "Цены и поставщики товаров" },
+
+            ]}
+
+            onChange={(v) => { setEditKind(v); setQuery(""); }}
+
+            disabled={busy}
+
+          />
+
+          <TextInput
+
+            accessibilityLabel="Поиск в каталоге"
+
+            style={os.input}
+
+            placeholder="Поиск по названию…"
+
+            placeholderTextColor="#aaa"
+
+            value={query}
+
+            onChangeText={setQuery}
+
+          />
+
+          <Text style={os.muted}>
+
+            Изменяйте значения прямо в таблице. Сохранение — Enter или переход
+
+            в другую ячейку. Пустое поле означает «не задано», 0 — отсутствие минимума.
+
+          </Text>
+
+          <ScrollView horizontal keyboardShouldPersistTaps="handled">
+
+            <View>
+
+              <View style={{ flexDirection: "row" }}>
+
+                <Text style={[os.cell, os.nameCell]}>
+
+                  {editKind === "supplier" ? "Поставщик" : "Товар"}
+
+                </Text>
+
+                <Text style={os.cell}>
+
+                  {editKind === "supplier" ? "Минимум, ₽" : "Цена, ₽"}
+
+                </Text>
+
+                {editKind === "product" && <Text style={[os.cell, { width: 230 }]}>Поставщик</Text>}
+
+              </View>
+
+              {editKind === "supplier"
+
+                ? catalog.suppliers
+
+                    .filter((s) => s.name.toLowerCase().includes(query.trim().toLowerCase()))
+
+                    .sort((a, b) => a.name.localeCompare(b.name, "ru"))
+
+                    .map((s) => (
+
+                      <View key={s.id} style={{ flexDirection: "row", alignItems: "center" }}>
+
+                        <Text style={[os.cell, os.nameCell]}>{s.name}</Text>
+
+                        <CatalogAmountCell
+
+                          key={`minimum:${s.id}`}
+
+                          label={`Минимальный заказ: ${s.name}`}
+
+                          value={s.minimum_order_amount}
+
+                          disabled={busy}
+
+                          onSave={(value) => saveCatalogCell("supplier", s.id, value)}
+
+                        />
+
+                      </View>
+
+                    ))
+
+                : catalog.products
+
+                    .filter((p) => p.name.toLowerCase().includes(query.trim().toLowerCase()))
+
+                    .sort((a, b) => a.name.localeCompare(b.name, "ru"))
+
+                    .map((p) => (
+
+                      <View key={p.id} style={{ flexDirection: "row", alignItems: "center" }}>
+
+                        <Text style={[os.cell, os.nameCell]}>{p.name}</Text>
+
+                        <CatalogAmountCell
+
+                          key={`price:${p.id}`}
+
+                          label={`Цена: ${p.name}`}
+
+                          value={p.unit_price}
+
+                          disabled={busy}
+
+                          onSave={(value) => saveCatalogCell("product", p.id, value, p.supplier_id)}
+
+                        />
+
+                        <SupplierDropdown
+
+                          value={p.supplier_id}
+
+                          suppliers={catalog.suppliers}
+
+                          productName={p.name}
+
+                          disabled={busy}
+
+                          onChange={(id) => saveCatalogCell("product", p.id, p.unit_price, id)}
+
+                        />
+
+                      </View>
+
+                    ))}
+
+            </View>
+
+          </ScrollView>
+
+        </>
+
+      )}
+
+    </ScrollView>
+
+  );
+
+}
