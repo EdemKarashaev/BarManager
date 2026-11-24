@@ -2,23 +2,31 @@
 import { ScrollViewStyleReset } from 'expo-router/html';
 import type { PropsWithChildren } from 'react';
 
+
 const serviceWorkerScript = `
   if ('serviceWorker' in navigator) {
-    window.addEventListener('load', function () {
+    const registerSW = () => {
       navigator.serviceWorker
         .register('/sw.js', {
           updateViaCache: 'none'
         })
-        .then(function (registration) {
+        .then((registration) => {
           console.log('Bar Manager SW registered');
           registration.update().catch(console.warn);
         })
-        .catch(function (error) {
-          console.warn('Service Worker error:', error);
-        });
-    });
+        .catch(console.error);
+    };
+
+    if (document.readyState === 'complete') {
+      registerSW();
+    } else {
+      window.addEventListener('load', registerSW, {
+        once: true
+      });
+    }
   }
 `;
+
 
 export default function Root({ children }: PropsWithChildren) {
   return (
@@ -33,6 +41,7 @@ export default function Root({ children }: PropsWithChildren) {
 
         <meta name="theme-color" content="#151518" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="mobile-web-app-capable" content="yes" />
         <meta
           name="apple-mobile-web-app-status-bar-style"
           content="default"
