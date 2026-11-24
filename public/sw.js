@@ -41,7 +41,7 @@ self.addEventListener('fetch', (event) => {
 
   if (request.mode === 'navigate') {
     event.respondWith(
-      fetch(request).catch(async () => {
+      fetch(request, { cache: 'no-store' }).catch(async () => {
         const cached = await caches.match(request);
 
         return cached || new Response(

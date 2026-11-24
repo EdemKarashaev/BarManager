@@ -33,6 +33,7 @@ export default function Root({ children }: PropsWithChildren) {
     <html lang="ru">
       <head>
         <meta charSet="utf-8" />
+        <meta name="bm-build-version" content="BM_BUILD_VERSION_PLACEHOLDER" />
 
         <meta
           name="viewport"

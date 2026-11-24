@@ -3,8 +3,8 @@ import Constants from 'expo-constants';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, Text, View } from 'react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { ActivityIndicator, Platform, Pressable, Text, View } from 'react-native';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 const APP_VERSION = Constants.expoConfig?.version ?? '0.1.0';
 const RELEASE_CHANNEL: string =
@@ -86,11 +86,78 @@ function Routes() {
   );
 }
 
+function WebUpdateNotice() {
+  const [available, setAvailable] = useState('');
+  const [dismissed, setDismissed] = useState('');
+  const [message, setMessage] = useState('');
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    const current = document.querySelector('meta[name="bm-build-version"]')?.getAttribute('content');
+    if (!current || current === 'BM_BUILD_VERSION_PLACEHOLDER') return;
+    let active = true;
+    let checking = false;
+    async function check() {
+      if (checking || !active) return;
+      checking = true;
+      try {
+        const response = await fetch('/version.json', { cache: 'no-store' });
+        if (!response.ok) return;
+        const data = await response.json();
+        if (active && typeof data.version === 'string' && data.version) {
+          setAvailable(data.version === current ? '' : data.version);
+        }
+      } catch { /* Offline: keep the current version. */ }
+      finally { checking = false; }
+    }
+    const onVisible = () => { if (document.visibilityState === 'visible') void check(); };
+    void check();
+    const timer = window.setInterval(() => void check(), 300000);
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
+    window.addEventListener('online', onVisible);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onVisible);
+      window.removeEventListener('online', onVisible);
+    };
+  }, []);
+  if (Platform.OS !== 'web' || !available || available === dismissed) return null;
+  const update = () => {
+    if (!window.dispatchEvent(new Event('bm:before-update', { cancelable: true }))) {
+      setMessage('Сначала сохраните заказ и дождитесь завершения операции.');
+      return;
+    }
+    if (!navigator.onLine) { setMessage('Для обновления нужен интернет.'); return; }
+    window.location.reload();
+  };
+  return (
+    <SafeAreaView edges={['top']} style={{ backgroundColor: '#252529' }}>
+      <View style={{ padding: 10, gap: 6, borderBottomWidth: 1, borderBottomColor: '#C7A56B' }}>
+        <Text style={{ color: '#C7A56B', fontWeight: '700', fontSize: 15 }}>Доступно обновление</Text>
+        <Text style={{ color: '#eee', fontSize: 12 }}>{message || 'Перед обновлением сохраните текущий заказ.'}</Text>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <Pressable onPress={() => { setDismissed(available); setMessage(''); }} style={{ flex: 1, padding: 9, borderWidth: 1, borderColor: '#66563C', borderRadius: 8, alignItems: 'center' }}>
+            <Text style={{ color: '#eee' }}>Позже</Text>
+          </Pressable>
+          <Pressable onPress={update} style={{ flex: 1, padding: 9, backgroundColor: '#C7A56B', borderRadius: 8, alignItems: 'center' }}>
+            <Text style={{ color: '#151518', fontWeight: '700' }}>Обновить</Text>
+          </Pressable>
+        </View>
+      </View>
+    </SafeAreaView>
+  );
+}
+
 export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <AuthProvider>
-        <Routes />
+        <View style={{ flex: 1 }}>
+          <WebUpdateNotice />
+          <Routes />
+        </View>
       </AuthProvider>
     </SafeAreaProvider>
   );

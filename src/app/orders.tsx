@@ -31,6 +31,7 @@ import { router } from "expo-router";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Platform,
   FlatList,
   Pressable,
   ScrollView,
@@ -112,6 +113,25 @@ export default function OrdersScreen() {
   const localWrites = useRef(Promise.resolve());
   const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const quantitiesRef = useRef<Record<string, string>>({});
+  const updateBlocked = useRef(false);
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    const guard = (event: Event) => {
+      if (updateBlocked.current || working.current || dirty || busy) event.preventDefault();
+    };
+    const unload = (event: BeforeUnloadEvent) => {
+      if (updateBlocked.current || working.current || dirty || busy) {
+        event.preventDefault();
+        event.returnValue = '';
+      }
+    };
+    window.addEventListener('bm:before-update', guard);
+    window.addEventListener('beforeunload', unload);
+    return () => {
+      window.removeEventListener('bm:before-update', guard);
+      window.removeEventListener('beforeunload', unload);
+    };
+  }, [dirty, busy]);
   const draftKey = `bm:order-draft:${session?.user.id}:${week}`;
   // Clear the previous account/week before fetching so stale orders cannot be edited.
   useEffect(() => {
@@ -125,6 +145,7 @@ export default function OrdersScreen() {
     draftTimer.current = null;
     quantitiesRef.current = {};
     setQuantities({});
+    updateBlocked.current = false;
     setDirty(false);
     setError("");
     setNotice("");
@@ -172,7 +193,8 @@ export default function OrdersScreen() {
             ) {
               quantitiesRef.current = local.quantities;
               setQuantities(local.quantities);
-              setDirty(true);
+              updateBlocked.current = true;
+    setDirty(true);
               setNotice(
                 "Восстановлены несохранённые изменения на этом устройстве.",
               );
@@ -308,6 +330,7 @@ export default function OrdersScreen() {
     const next = { ...quantitiesRef.current, [id]: q };
     quantitiesRef.current = next;
     setQuantities(next);
+    updateBlocked.current = true;
     setDirty(true);
     setNotice('Есть изменения, не сохранённые на сервере.');
     if (draftTimer.current) clearTimeout(draftTimer.current);
@@ -379,7 +402,8 @@ export default function OrdersScreen() {
       });
       if (generation !== live.current) return;
       setOrder({ ...order, revision: result.revision });
-      setDirty(false);
+      updateBlocked.current = false;
+    setDirty(false);
       if (replacement) {
         quantitiesRef.current = replacement;
         setQuantities(replacement);
@@ -449,7 +473,7 @@ export default function OrdersScreen() {
     <SafeAreaView style={os.screen}>
        <View style={{ paddingHorizontal: 10, paddingTop: 4, paddingBottom: 5, gap: 5 }}>
          <View style={[os.row, { justifyContent: "space-between" }]}>
-           <Pressable onPress={() => router.back()} disabled={busy} style={{ paddingVertical: 5, paddingHorizontal: 8, borderRadius: 7, backgroundColor: "#75444f" }}>
+           <Pressable onPress={() => router.back()} disabled={busy || (Platform.OS === "web" && dirty)} style={{ paddingVertical: 5, paddingHorizontal: 8, borderRadius: 7, backgroundColor: "#75444f" }}>
              <Text style={{ color: "#fff", fontSize: 13 }}>‹ Главная</Text>
            </Pressable>
            <Text style={[os.title, { fontSize: 20 }]}>Заказы</Text>
