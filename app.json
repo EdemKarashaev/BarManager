@@ -2,7 +2,7 @@
   "expo": {
     "name": "BarManager",
     "slug": "BarManager",
-    "version": "1.0.3",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/images/ketchup-icon.png",
     "scheme": "barmanager",
