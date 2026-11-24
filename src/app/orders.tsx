@@ -1,3 +1,6 @@
+import { usePreventRemove } from "expo-router";
+import { Alert } from "react-native";
+import { blockUpdates } from '@/lib/update-guard';
 /* eslint-disable react-hooks/set-state-in-effect -- Reset remote data immediately when account or reporting period changes; stale data must not remain editable. */
 import {
   emptyFilters,
@@ -88,6 +91,7 @@ const ProductRow = memo(function ProductRow({ product: p, supplierName, quantity
 
 export default function OrdersScreen() {
   const { session } = useAuth();
+  useEffect(() => blockUpdates(), []);
   const [week, setWeek] = useState(monday());
   const [context, setContext] = useState<OrderContext | null>(null);
   const [catalog, setCatalog] = useState<Catalog>({
@@ -114,6 +118,18 @@ export default function OrdersScreen() {
   const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const quantitiesRef = useRef<Record<string, string>>({});
   const updateBlocked = useRef(false);
+
+  usePreventRemove(dirty || busy, () => {
+    const message = working.current
+      ? "Дождитесь завершения операции."
+      : "Сохраните заказ перед выходом из раздела.";
+
+    setNotice(message);
+
+    if (Platform.OS !== "web") {
+      Alert.alert("Защита заказа", message);
+    }
+  });
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return;
     const guard = (event: Event) => {
@@ -327,25 +343,29 @@ export default function OrdersScreen() {
       Number(quantities[id].replace(",", ".")) > 0,
   );
   const change = useCallback((id: string, q: string) => {
+    if (working.current) return;
     const next = { ...quantitiesRef.current, [id]: q };
     quantitiesRef.current = next;
     setQuantities(next);
     updateBlocked.current = true;
     setDirty(true);
     setNotice('Есть изменения, не сохранённые на сервере.');
-    if (draftTimer.current) clearTimeout(draftTimer.current);
-    // Данные записываются после короткой паузы, а кнопки реагируют сразу.
-    draftTimer.current = setTimeout(() => {
-      draftTimer.current = null;
-      const data = JSON.stringify({ orderId: order?.id, revision: order?.revision, quantities: quantitiesRef.current });
-      localWrites.current = localWrites.current
-        .then(() => AsyncStorage.setItem(draftKey, data))
-        .catch(() => setNotice('Не удалось сохранить локальную копию. Сохраните черновик на сервер.'));
-    }, 450);
+    // Queue a snapshot immediately without blocking the UI.
+    const data = JSON.stringify({
+      orderId: order?.id,
+      revision: order?.revision,
+      quantities: next,
+    });
+
+    localWrites.current = localWrites.current
+      .then(() => AsyncStorage.setItem(draftKey, data))
+      .catch(() => {
+        setNotice('Не удалось сохранить локальную копию. Сохраните черновик на сервер.');
+      });
   }, [order?.id, order?.revision, draftKey]);
 
   const stepQuantity = useCallback((id: string, direction: -1 | 1) => {
-    if (!editable || busy) return;
+    if (!editable || busy || working.current) return;
     const raw = (quantitiesRef.current[id] || '0').replace(',', '.');
     const current = Number(raw);
     const safe = Number.isFinite(current) && current >= 0 ? current : 0;
@@ -473,7 +493,7 @@ export default function OrdersScreen() {
     <SafeAreaView style={os.screen}>
        <View style={{ paddingHorizontal: 10, paddingTop: 4, paddingBottom: 5, gap: 5 }}>
          <View style={[os.row, { justifyContent: "space-between" }]}>
-           <Pressable onPress={() => router.back()} disabled={busy || (Platform.OS === "web" && dirty)} style={{ paddingVertical: 5, paddingHorizontal: 8, borderRadius: 7, backgroundColor: "#75444f" }}>
+           <Pressable onPress={() => router.back()} disabled={busy || dirty} style={{ paddingVertical: 5, paddingHorizontal: 8, borderRadius: 7, backgroundColor: "#75444f" }}>
              <Text style={{ color: "#fff", fontSize: 13 }}>‹ Главная</Text>
            </Pressable>
            <Text style={[os.title, { fontSize: 20 }]}>Заказы</Text>

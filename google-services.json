@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "538606757099",
+    "project_id": "barmanager-159b2",
+    "storage_bucket": "barmanager-159b2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:538606757099:android:227a110d1e35218ef6caae",
+        "android_client_info": {
+          "package_name": "com.edemasanovichsteam.BarManager"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDczeQe-yhtR1xFK9RJiFBWvgbtqpGWnY4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,3 +1,4 @@
+import { useUpdate } from '@/providers/update';
 
 import { useAuth } from '@/providers/auth';
 import Constants from 'expo-constants';
@@ -122,6 +123,7 @@ function Icon({
 
 export default function HomeScreen() {
   const { staff, signOut } = useAuth();
+  const { unread } = useUpdate();
   const [logoutError, setLogoutError] = useState('');
   const appVersion = Constants.expoConfig?.version ?? '—';
   const releaseChannel = Constants.expoConfig?.extra?.releaseChannel ?? 'beta';
@@ -196,7 +198,8 @@ if (route === 'transfers') {
     if (activeTab === 'menu') {
       return (
         <>
-          <Text style={styles.greeting}>Добрый день!</Text>
+          <Text style={styles.greeting}>Добрый день!
+          </Text>
           <Text style={styles.sectionCaption}>РАЗДЕЛЫ ПРИЛОЖЕНИЯ</Text>
           {renderSectionGrid(SECTIONS)}
         </>
@@ -275,13 +278,12 @@ if (route === 'transfers') {
 
         <View style={styles.headerActions}>
           <Pressable
-            onPress={() =>
-              Alert.alert('Уведомления', 'Новых уведомлений пока нет.')
-            }
+            onPress={() => router.push('/notifications')}
             style={styles.headerButton}
             accessibilityLabel="Уведомления"
           >
             <Icon name="bell" size={23} color={C.text} />
+            {unread && <View style={{ position: 'absolute', top: 3, right: 3, width: 17, height: 17, borderRadius: 9, backgroundColor: C.red, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: '#fff', fontSize: 10 }}>1</Text></View>}
           </Pressable>
 
           <Pressable

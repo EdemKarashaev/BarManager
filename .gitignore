@@ -45,3 +45,5 @@ example
 /ios
 /android
 BarManager-web.zip
+# Local Android release history
+.release-android/

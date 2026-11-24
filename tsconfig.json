@@ -15,6 +15,7 @@
   "exclude": [
     "node_modules",
     "orders-supplement-update",
-    "orders-update"
+    "orders-update",
+    "supabase/functions"
   ]
 }

@@ -1,3 +1,4 @@
+import { unregisterPush } from '@/lib/android-update';
 import type { Session } from '@supabase/supabase-js';
 import { createContext, useCallback, useContext, useEffect, useState, type PropsWithChildren } from 'react';
 import { AppState, Platform } from 'react-native';
@@ -52,6 +53,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     return () => { alive = false; clearTimeout(timer); controller.abort(); };
   }, [userId, revision]);
   const signOut = useCallback(async () => {
+    if (Platform.OS === 'android') await unregisterPush();
     const { error } = await supabase.auth.signOut({ scope: 'local' });
     if (error) throw error;
     setResult(null); setSession(null);

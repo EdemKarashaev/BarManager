@@ -1,4 +1,5 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { blockUpdates } from "@/lib/update-guard";
 import { Modal, ScrollView, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { OButton, OrderFilters, emptyFilters, os } from "./order-ui";
@@ -31,6 +32,12 @@ export function OrderSupplement({
   const [quantities, setQuantities] = useState<Record<string, string>>({});
   const [filters, setFilters] = useState(emptyFilters);
   const lock = useRef(false);
+
+  // Prevent app updates while editing or submitting a supplement.
+  useEffect(() => {
+    if (!open && !busy) return;
+    return blockUpdates();
+  }, [open, busy]);
   const products = (catalog?.products || [])
     .filter((p) => p.is_active)
     .map((p) => {

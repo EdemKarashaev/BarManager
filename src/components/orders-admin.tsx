@@ -4,6 +4,7 @@ import {
   exportSupplierExcel,
 } from "@/lib/order-excel-export";
 import { decimalUnits } from "@/lib/order-rules";
+import { blockUpdates } from '@/lib/update-guard';
 import {
   orderError,
   ordersRpc,
@@ -226,6 +227,9 @@ export function OrdersAdmin({
   setCatalog: (c: Catalog) => void;
   week: string;
 }) {
+  // Prevent app updates while the administrator order screen is mounted.
+  useEffect(() => blockUpdates(), []);
+
   const [tab, setTab] = useState("orders");
   const [orders, setOrders] = useState<Order[]>([]);
   const [error, setError] = useState("");

@@ -1,3 +1,4 @@
+import { blockUpdates } from "@/lib/update-guard";
 /* eslint-disable react-hooks/set-state-in-effect -- Reset remote data immediately when account or reporting period changes; stale data must not remain editable. */
 
 import { decimalUnits } from "@/lib/order-rules";
@@ -457,6 +458,8 @@ export function OrdersAdmin({
   week: string;
 
 }) {
+  useEffect(() => blockUpdates(), []);
+
 
   const [tab, setTab] = useState("orders");
 

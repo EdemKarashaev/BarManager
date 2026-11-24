@@ -1,33 +1,33 @@
-
 {
   "expo": {
     "name": "BarManager",
     "slug": "BarManager",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/images/ketchup-icon.png",
     "scheme": "barmanager",
     "userInterfaceStyle": "automatic",
-   "ios": {
-  "icon": "./assets/images/ketchup-icon.png"
-},
+    "ios": {
+      "icon": "./assets/images/ketchup-icon.png"
+    },
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#000000",
         "foregroundImage": "./assets/images/ketchup-adaptive-icon.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.edemasanovichsteam.BarManager"
+      "package": "com.edemasanovichsteam.BarManager",
+      "googleServicesFile": "./google-services.json"
     },
-   "web": {
-  "bundler": "metro",
-  "output": "static",
-  "name": "Bar Manager",
-  "shortName": "Bar Manager",
-  "themeColor": "#151518",
-  "backgroundColor": "#151518",
-  "favicon": "./assets/images/ketchup-favicon.png"
-},
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "name": "Bar Manager",
+      "shortName": "Bar Manager",
+      "themeColor": "#151518",
+      "backgroundColor": "#151518",
+      "favicon": "./assets/images/ketchup-favicon.png"
+    },
     "plugins": [
       "expo-router",
       [
@@ -39,7 +39,14 @@
         }
       ],
       "expo-status-bar",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-notifications",
+        {
+          "color": "#C7A56B",
+          "defaultChannel": "updates"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
@@ -60,7 +67,10 @@
       "policy": "appVersion"
     },
     "updates": {
-      "url": "https://u.expo.dev/81634596-b3e7-42ed-bca4-56607d7edf9a"
+      "url": "https://u.expo.dev/81634596-b3e7-42ed-bca4-56607d7edf9a",
+      "enabled": true,
+      "checkAutomatically": "NEVER",
+      "fallbackToCacheTimeout": 0
     }
   }
 }
