@@ -1,3 +1,4 @@
+
 {
   "expo": {
     "name": "BarManager",
@@ -7,9 +8,9 @@
     "icon": "./assets/images/ketchup-icon.png",
     "scheme": "barmanager",
     "userInterfaceStyle": "automatic",
-    "ios": {
-      "icon": "./assets/expo.icon"
-    },
+   "ios": {
+  "icon": "./assets/images/ketchup-icon.png"
+},
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#000000",
@@ -18,10 +19,15 @@
       "predictiveBackGestureEnabled": false,
       "package": "com.edemasanovichsteam.BarManager"
     },
-    "web": {
-      "output": "server",
-      "favicon": "./assets/images/favicon.png"
-    },
+   "web": {
+  "bundler": "metro",
+  "output": "static",
+  "name": "Bar Manager",
+  "shortName": "Bar Manager",
+  "themeColor": "#151518",
+  "backgroundColor": "#151518",
+  "favicon": "./assets/images/ketchup-favicon.png"
+},
     "plugins": [
       "expo-router",
       [
@@ -33,8 +39,7 @@
         }
       ],
       "expo-status-bar",
-      "expo-web-browser",
-      "expo-sharing"
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,
