@@ -16,7 +16,7 @@ const RELEASE_CHANNEL: string =
 void SplashScreen.preventAutoHideAsync().catch(() => {});
 
 function Routes() {
-  const { session, staff, loading, error, retry, signOut } = useAuth();
+  const { session, staff, loading, error, retry, signOut, offline } = useAuth();
   const [logoutError, setLogoutError] = useState('');
 
   useEffect(() => {
@@ -97,14 +97,18 @@ function Routes() {
 
       <Stack.Protected guard={!!session && !!staff}>
         <Stack.Screen name="home" />
+        <Stack.Screen name="recipes/index" />
+        <Stack.Screen name="recipes/[id]" />
+      </Stack.Protected>
+
+      <Stack.Protected guard={!!session && !!staff && !offline}>
         <Stack.Screen name="transfers/index" />
         <Stack.Screen name="transfers/create" />
         <Stack.Screen name="transfers/[id]" />
         <Stack.Screen name="notifications" />
         <Stack.Screen name="storage" />
         <Stack.Screen name="orders" />
-        <Stack.Screen name="recipes/index" />
-        <Stack.Screen name="recipes/[id]" />
+        <Stack.Screen name="admin/orders" />
         <Stack.Screen name="explore" />
         <Stack.Screen name="settings" />
       </Stack.Protected>

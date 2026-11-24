@@ -4,7 +4,15 @@ import type { PropsWithChildren } from 'react';
 
 
 const serviceWorkerScript = `
-  if ('serviceWorker' in navigator) {
+  const buildVersion = document
+    .querySelector('meta[name="bm-build-version"]')
+    ?.getAttribute('content');
+
+  if (
+    'serviceWorker' in navigator &&
+    buildVersion &&
+    buildVersion !== 'BM_BUILD_VERSION_PLACEHOLDER'
+  ) {
     const registerSW = () => {
       navigator.serviceWorker
         .register('/sw.js', {

@@ -4,34 +4,114 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BackBar, Badges, Message, palette, ui } from '@/components/recipe-ui';
 import { fetchRecipe, recipeError } from '@/lib/recipes';
+import { loadLocalRecipes } from '@/lib/recipe-sync';
 import { formatAmount, type Recipe, type RecipeStep } from '@/lib/recipe-model';
 import { useAuth } from '@/providers/auth';
 export default function RecipeScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { staff, session } = useAuth();
+  const { staff, session, offline: authOffline } = useAuth();
   const [recipe, setRecipe] = useState<Recipe | null>(null);
   const [steps, setSteps] = useState<RecipeStep[]>([]);
   const [variantId, setVariantId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [revision, setRevision] = useState(0);
+  const [offline, setOffline] = useState(false);
   useFocusEffect(useCallback(() => {
-    // Refetch on explicit retry and account changes; never retain another session's data.
     void revision;
-    if (!session?.user.id) return;
+
+    const userId = session?.user.id;
+    const roleId = staff?.roleId;
+
+    setRecipe(null);
+    setSteps([]);
+    setVariantId(null);
+    setError('');
+    setOffline(false);
+    setLoading(true);
+
+    if (
+      !userId ||
+      roleId == null ||
+      typeof id !== 'string' ||
+      !/^[0-9]+$/.test(id)
+    ) {
+      setLoading(false);
+      return;
+    }
+
     let alive = true;
+    let hasCache = false;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 25000);
-    setRecipe(null); setSteps([]); setLoading(true); setError('');
-    if (typeof id !== 'string' || !/^\d+$/.test(id)) { clearTimeout(timer); setLoading(false); return; }
-    fetchRecipe(id, controller.signal).then(result => {
+
+    (async () => {
+      const cached = await loadLocalRecipes(userId, roleId);
+
       if (!alive) return;
-      const allowed = result.recipe && (!result.recipe.admin_only || staff?.isAdmin);
-      if (allowed) { setRecipe(result.recipe); setSteps(result.steps); setVariantId(result.recipe?.variants[0]?.id ?? null); }
-    }).catch(err => { if (alive) setError(recipeError(err)); })
-      .finally(() => { clearTimeout(timer); if (alive) setLoading(false); });
-    return () => { alive = false; clearTimeout(timer); controller.abort(); };
-  }, [id, revision, session?.user.id, staff?.isAdmin]));
+
+      const local = cached?.recipes.find(
+        item => String(item.id) === id
+      );
+
+      if (local) {
+        hasCache = true;
+        setRecipe(local);
+        setSteps(cached?.steps[id] || []);
+        setVariantId(local.variants[0]?.id ?? null);
+        setLoading(false);
+        setOffline(true);
+      }
+
+      if (authOffline) {
+        if (!local) setError('Эта ТТК недоступна без интернета.');
+        return;
+      }
+
+      const result = await fetchRecipe(id, controller.signal);
+
+      if (!alive) return;
+
+      const allowed = result.recipe &&
+        (result.recipe.admin_only === false || staff?.isAdmin === true);
+
+      if (allowed && result.recipe) {
+        setRecipe(result.recipe);
+        setSteps(result.steps);
+
+        const variants = result.recipe.variants;
+
+        setVariantId(previous =>
+          variants.some(v => v.id === previous)
+            ? previous
+            : variants[0]?.id ?? null
+        );
+
+        setOffline(false);
+      } else {
+        setRecipe(null);
+        setSteps([]);
+        setOffline(false);
+      }
+    })().catch(err => {
+      if (!alive) return;
+
+      if (hasCache) {
+        setOffline(true);
+      } else {
+        setError(recipeError(err));
+      }
+    }).finally(() => {
+      clearTimeout(timer);
+      if (alive) setLoading(false);
+    });
+
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [id, revision, session?.user.id, staff?.roleId, staff?.isAdmin, authOffline]));
   const variant = recipe?.variants.find(v => v.id === variantId);
   return <SafeAreaView style={ui.screen}>
     <BackBar title="КАРТОЧКА ТТК" />
@@ -39,6 +119,10 @@ export default function RecipeScreen() {
       <Text style={ui.eyebrow}>{recipe.category?.name || 'ТТК'}</Text>
       <Text style={ui.title}>{recipe.name || 'Без названия'}</Text>
       <Badges recipe={recipe} />
+      {offline && <Text style={{
+        color: '#C7A56B',
+        fontSize: 12,
+      }}>Сохранённая версия ТТК</Text>}
       {!!recipe.description && <Text style={ui.body}>{recipe.description}</Text>}
       <Text style={s.heading}>Выход и порция</Text>
       <View style={s.variants}>{recipe.variants.map(v => <Pressable key={v.id} accessibilityRole="button" accessibilityState={{ selected: v.id === variantId }} onPress={() => setVariantId(v.id)} style={[s.variant, v.id === variantId && s.selected]}><Text style={ui.text}>{v.name}</Text></Pressable>)}</View>

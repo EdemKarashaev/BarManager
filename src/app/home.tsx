@@ -122,7 +122,7 @@ function Icon({
 }
 
 export default function HomeScreen() {
-  const { staff, signOut } = useAuth();
+  const { staff, signOut, offline, retry } = useAuth();
   const { unread } = useUpdate();
   const [logoutError, setLogoutError] = useState('');
   const appVersion = Constants.expoConfig?.version ?? '—';
@@ -130,6 +130,94 @@ export default function HomeScreen() {
   const [activeTab, setActiveTab] = useState<Tab>('menu');
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [activeSection, setActiveSection] = useState<Route | null>(null);
+
+  if (offline) {
+    return (
+      <SafeAreaView style={{
+        flex: 1,
+        backgroundColor: '#151518',
+        padding: 20,
+        gap: 16,
+      }}>
+        <Text style={{
+          color: '#C7A56B',
+          fontSize: 24,
+          fontWeight: '800',
+          letterSpacing: 2,
+        }}>BAR MANAGER</Text>
+
+        <View style={{
+          backgroundColor: '#29251F',
+          padding: 16,
+          borderRadius: 12,
+          gap: 8,
+        }}>
+          <Text style={{
+            color: '#C7A56B',
+            fontSize: 17,
+            fontWeight: '700',
+          }}>Автономный режим</Text>
+
+          <Text style={{ color: '#AAA', fontSize: 13 }}>
+            Нет связи с сервером. Доступны сохранённые ТТК.
+          </Text>
+        </View>
+
+        <Pressable
+          onPress={() => router.push('/recipes')}
+          style={{
+            backgroundColor: '#252529',
+            borderRadius: 12,
+            padding: 20,
+            borderWidth: 1,
+            borderColor: '#C7A56B',
+          }}>
+          <Text style={{
+            color: '#FFF',
+            fontSize: 20,
+            fontWeight: '700',
+          }}>Технологические карты ›</Text>
+          <Text style={{
+            color: '#79D5A4',
+            fontSize: 12,
+            marginTop: 6,
+          }}>Локальная база рецептур</Text>
+        </Pressable>
+
+        <Pressable
+          onPress={retry}
+          style={{
+            backgroundColor: '#C7A56B',
+            padding: 14,
+            borderRadius: 10,
+            alignItems: 'center',
+          }}>
+          <Text style={{
+            color: '#151518',
+            fontWeight: '700',
+          }}>Проверить подключение</Text>
+        </Pressable>
+
+        <Pressable
+          onPress={() => {
+            void signOut().catch(() =>
+              setLogoutError('Не удалось выйти из аккаунта.')
+            );
+          }}
+          style={{ padding: 14, alignItems: 'center' }}>
+          <Text style={{ color: '#FF8B8B' }}>
+            Выйти из аккаунта
+          </Text>
+        </Pressable>
+
+        {!!logoutError && (
+          <Text style={{ color: '#FF8B8B' }}>
+            {logoutError}
+          </Text>
+        )}
+      </SafeAreaView>
+    );
+  }
 
   const openSection = (route: Route) => {
     if (route === 'order') { setDropdownOpen(false); router.push('/orders'); return; }

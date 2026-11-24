@@ -2,7 +2,7 @@
   "expo": {
     "name": "BarManager",
     "slug": "BarManager",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "orientation": "portrait",
     "icon": "./assets/images/ketchup-icon.png",
     "scheme": "barmanager",
@@ -21,7 +21,7 @@
     },
     "web": {
       "bundler": "metro",
-      "output": "static",
+      "output": "single",
       "name": "Bar Manager",
       "shortName": "Bar Manager",
       "themeColor": "#151518",
@@ -55,9 +55,7 @@
     "extra": {
       "releaseChannel": "beta",
       "router": {
-        "asyncRoutes": {
-          "web": true
-        }
+        "asyncRoutes": false
       },
       "eas": {
         "projectId": "81634596-b3e7-42ed-bca4-56607d7edf9a"

@@ -35,3 +35,49 @@ export function recipeError(error: unknown): string {
   if (/permission|denied|jwt/i.test(message)) return 'Не удалось подтвердить доступ. Войдите заново или обратитесь к администратору.';
   return 'Не удалось загрузить ТТК. Повторите попытку. Если ошибка сохраняется, проверьте таблицы и права доступа в Supabase.';
 }
+
+export async function fetchRecipeSteps(
+  recipeIds: number[],
+  signal: AbortSignal,
+): Promise<Record<string, RecipeStep[]>> {
+  const result: Record<string, RecipeStep[]> = {};
+
+  const batchSize = 50;
+  const pageSize = 100;
+
+  for (let i = 0; i < recipeIds.length; i += batchSize) {
+    const ids = recipeIds.slice(i, i + batchSize);
+
+    for (let start = 0; ; start += pageSize) {
+      const { data, error } = await supabase
+        .from('recipe_steps')
+        .select('id,recipe_id,step_number,instruction')
+        .in('recipe_id', ids)
+        .order('recipe_id')
+        .order('step_number')
+        .order('id')
+        .range(start, start + pageSize - 1)
+        .abortSignal(signal);
+
+      if (error) throw error;
+
+      const rows = data || [];
+
+      for (const row of rows) {
+        const key = String(row.recipe_id);
+
+        if (!result[key]) result[key] = [];
+
+        result[key].push({
+          id: row.id,
+          step_number: row.step_number,
+          instruction: row.instruction,
+        });
+      }
+
+      if (rows.length < pageSize) break;
+    }
+  }
+
+  return result;
+}

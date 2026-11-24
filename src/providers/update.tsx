@@ -51,7 +51,7 @@ function errorMessage(error: unknown): string {
 export function UpdateProvider({
   children,
 }: PropsWithChildren) {
-  const { session, staff } = useAuth();
+  const { session, staff, offline } = useAuth();
   const userId = session?.user.id;
 
   const [available, setAvailable] = useState('');
@@ -68,7 +68,7 @@ export function UpdateProvider({
   const installing = useRef(false);
 
   async function check() {
-    if (Platform.OS !== 'android') return;
+    if (Platform.OS !== 'android' || offline) return;
     if (checkingRef.current || installing.current) return;
 
     checkingRef.current = true;
@@ -100,7 +100,7 @@ export function UpdateProvider({
   }
 
   async function enablePush() {
-    if (Platform.OS !== 'android') return;
+    if (Platform.OS !== 'android' || offline) return;
 
     if (!userId || !staff) {
       setPushStatus('Нет активного профиля сотрудника');
@@ -130,7 +130,7 @@ export function UpdateProvider({
     if (
       Platform.OS !== 'android' ||
       !userId ||
-      !staff
+      !staff || offline
     ) return;
 
     void check();
@@ -155,9 +155,10 @@ export function UpdateProvider({
       sub.remove();
       clearInterval(timer);
     };
-  }, [userId, !!staff]);
+  }, [userId, !!staff, offline]);
 
   async function install() {
+    if (offline) return;
     if (
       installing.current ||
       checkingRef.current ||
