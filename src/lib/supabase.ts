@@ -1,3 +1,4 @@
+import { createSupabaseFetch } from './supabase-network';
 import 'react-native-url-polyfill/auto';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient, processLock } from '@supabase/supabase-js';
@@ -9,6 +10,9 @@ if (!supabaseUrl || !supabaseKey) {
 }
 const canPersist = Platform.OS !== 'web' || typeof window !== 'undefined';
 export const supabase = createClient(supabaseUrl, supabaseKey, {
+  global: {
+    fetch: createSupabaseFetch(supabaseUrl, supabaseKey),
+  },
   auth: {
     ...(Platform.OS !== 'web' ? { storage: AsyncStorage } : {}),
     autoRefreshToken: canPersist,

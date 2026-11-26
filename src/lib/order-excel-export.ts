@@ -1,3 +1,5 @@
+import { Alert, Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -43,13 +45,115 @@ function workbookBase64(rows: ExportSummaryRow[], locations: ExportLocation[], s
   return XLSX.write(workbook, { bookType: 'xlsx', type: 'base64' });
 }
 
-async function shareBase64(base64: string, filename: string, mimeType: string) {
-  if (!(await Sharing.isAvailableAsync())) throw new Error('Системное меню сохранения/отправки файлов недоступно на этом устройстве.');
+const EXPORT_FOLDER_KEY = 'bm:orders:export-folder';
+
+async function saveAndroidFile(
+  base64: string,
+  filename: string,
+  mimeType: string
+) {
+  const saf = FileSystem.StorageAccessFramework;
+
+  let directoryUri = await AsyncStorage
+    .getItem(EXPORT_FOLDER_KEY)
+    .catch(() => null);
+
+  if (directoryUri) {
+    try {
+      await saf.readDirectoryAsync(directoryUri);
+    } catch {
+      directoryUri = null;
+      await AsyncStorage
+        .removeItem(EXPORT_FOLDER_KEY)
+        .catch(() => {});
+    }
+  }
+
+  if (!directoryUri) {
+    const permission =
+      await saf.requestDirectoryPermissionsAsync();
+
+    if (!permission.granted) {
+      Alert.alert(
+        'Скачивание отменено',
+        'Папка для сохранения не выбрана.'
+      );
+      return;
+    }
+
+    directoryUri = permission.directoryUri;
+
+    await AsyncStorage
+      .setItem(EXPORT_FOLDER_KEY, directoryUri)
+      .catch(() => {});
+  }
+
+  const nameWithoutExtension =
+    filename.replace(/\\.[^.]+$/, '');
+
+  const fileUri = await saf.createFileAsync(
+    directoryUri,
+    nameWithoutExtension,
+    mimeType
+  );
+
+  try {
+    await FileSystem.writeAsStringAsync(
+      fileUri,
+      base64,
+      { encoding: FileSystem.EncodingType.Base64 }
+    );
+  } catch (error) {
+    await FileSystem.deleteAsync(
+      fileUri,
+      { idempotent: true }
+    ).catch(() => {});
+
+    throw error;
+  }
+
+  Alert.alert(
+    'Файл сохранён',
+    filename + '\\n\\nФайл находится в выбранной папке.'
+  );
+}
+
+async function shareBase64(
+  base64: string,
+  filename: string,
+  mimeType: string
+) {
+  if (Platform.OS === 'android') {
+    await saveAndroidFile(base64, filename, mimeType);
+    return;
+  }
+
+  if (!(await Sharing.isAvailableAsync())) {
+    throw new Error(
+      'Системное меню сохранения/отправки файлов недоступно на этом устройстве.'
+    );
+  }
+
   const root = FileSystem.cacheDirectory;
-  if (!root) throw new Error('Не удалось получить временную папку устройства.');
+
+  if (!root) {
+    throw new Error(
+      'Не удалось получить временную папку устройства.'
+    );
+  }
+
   const uri = root + filename;
-  await FileSystem.writeAsStringAsync(uri, base64, { encoding: FileSystem.EncodingType.Base64 });
-  await Sharing.shareAsync(uri, { mimeType, dialogTitle: 'Сохранить или отправить заказ' });
+
+  await FileSystem.writeAsStringAsync(
+    uri,
+    base64,
+    { encoding: FileSystem.EncodingType.Base64 }
+  );
+
+  await Sharing.shareAsync(uri, {
+    mimeType,
+    dialogTitle: 'Сохранить или отправить заказ'
+  });
 }
 
 export async function exportSupplierExcel(rows: ExportSummaryRow[], locations: ExportLocation[], supplierName: string, week: string) {
