@@ -1,3 +1,4 @@
+import { ProfileSettings } from '@/components/profile-settings';
 import { UpdateSettings } from '@/components/update-settings';
 import { ThemeSelector } from '@/components/theme-selector';
 import { useAppTheme } from '@/providers/theme';
@@ -38,6 +39,7 @@ export default function SettingsScreen() {
           Настройки
         </Text>
 
+        <ProfileSettings />
         <ThemeSelector />
         <ChangePassword />
         <UpdateSettings />

@@ -1,7 +1,9 @@
 import { APP_VERSION } from '@/lib/app-version';
 import { usePermissions } from '@/lib/permissions';
 import { useAppTheme } from '@/providers/theme';
-import { useMemo } from 'react';
+import { useMemo, useCallback } from 'react';
+import { useFocusEffect } from 'expo-router';
+import { supabase } from '@/lib/supabase';
 import { useUpdate } from '@/providers/update';
 
 import { useAuth } from '@/providers/auth';
@@ -31,7 +33,8 @@ type Route =
   | 'storage'
   | 'stock'
   | 'info'
-  | 'encyclopedia';
+  | 'encyclopedia'
+  | 'staff';
 
 type Tab = 'menu' | 'guide' | 'orders' | 'settings';
 
@@ -55,6 +58,7 @@ const SECTIONS: { route: Route; label: string }[] = [
   { route: 'stock', label: 'Сток' },
   { route: 'info', label: 'Полезная информация' },
   { route: 'encyclopedia', label: 'Энциклопедия' },
+  { route: 'staff', label: 'Сотрудники' },
 ];
 
 const TABS: { key: Tab; label: string; icon: string }[] = [
@@ -135,7 +139,7 @@ export default function HomeScreen() {
   );
   const { staff, signOut, offline, retry } = useAuth();
   const u = useUpdate();
-  const unread = !!u.available;
+  
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [logoutError, setLogoutError] = useState('');
   const appVersion = Constants.expoConfig?.version ?? '—';
@@ -144,7 +148,54 @@ export default function HomeScreen() {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [activeSection, setActiveSection] = useState<Route | null>(null);
 
-  const { canRead, ready } = usePermissions();
+  const { canRead, canManage, ready } = usePermissions();
+
+  const [pendingCount, setPendingCount] = useState(0);
+
+  const staffAllowed =
+    !!staff?.isAdmin && ready && !offline && canManage('staff');
+
+  useFocusEffect(useCallback(() => {
+    if (!staffAllowed) {
+      setPendingCount(0);
+      return;
+    }
+
+    let active = true;
+    let running = false;
+
+    async function refresh() {
+      if (running) return;
+      running = true;
+
+      try {
+        const { data, error } = await supabase.rpc(
+          'bm_registration_count'
+        );
+
+        if (active && !error) {
+          setPendingCount(Number(data) || 0);
+        }
+      } catch {
+        // Сохраняем последнее известное количество.
+      } finally {
+        running = false;
+      }
+    }
+
+    void refresh();
+    const timer = setInterval(() => void refresh(), 30000);
+
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [staffAllowed]));
+
+  const requestCount = staffAllowed ? pendingCount : 0;
+  const notificationCount =
+    requestCount + (u.available ? 1 : 0);
+
 
   const sectionKeys: Record<Route, string> = {
     ttk: 'recipes',
@@ -156,10 +207,13 @@ export default function HomeScreen() {
     stock: 'stock',
     info: 'info',
     encyclopedia: 'encyclopedia',
+    staff: 'staff',
   };
 
   const visibleSections = SECTIONS.filter(
-    item => canRead(sectionKeys[item.route])
+    item => item.route === 'staff'
+      ? staffAllowed
+      : canRead(sectionKeys[item.route])
   );
 
   const visibleTabs = TABS.filter(item => {
@@ -210,7 +264,7 @@ export default function HomeScreen() {
           </Text>
         </View>
 
-        <Pressable
+        {canRead('recipes') && <Pressable
           onPress={() => router.push('/recipes')}
           style={{
             backgroundColor: colors.surface,
@@ -229,7 +283,7 @@ export default function HomeScreen() {
             fontSize: 12,
             marginTop: 6,
           }}>Локальная база рецептур</Text>
-        </Pressable>
+        </Pressable>}
 
         <Pressable
           onPress={retry}
@@ -267,6 +321,13 @@ export default function HomeScreen() {
   }
 
   const openSection = (route: Route) => {
+    if (route === 'staff') {
+      if (!staffAllowed) return;
+      setDropdownOpen(false);
+      router.push('/staff');
+      return;
+    }
+
     if (!canRead(sectionKeys[route])) return;
 
     if (route === 'order') { setDropdownOpen(false); router.push('/orders'); return; }
@@ -306,6 +367,29 @@ if (route === 'transfers') {
           ]}
         >
           <Text style={styles.cardText}>{item.label}</Text>
+
+          {item.route === 'staff' && requestCount > 0 && (
+            <View style={{
+              position: 'absolute',
+              top: 8,
+              right: 8,
+              minWidth: 22,
+              height: 22,
+              paddingHorizontal: 5,
+              borderRadius: 11,
+              backgroundColor: '#CC0014',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}>
+              <Text style={{
+                color: '#FFFFFF',
+                fontSize: 12,
+                fontWeight: '700',
+              }}>
+                {requestCount > 99 ? '99+' : requestCount}
+              </Text>
+            </View>
+          )}
           <View style={styles.cardAccent} />
         </Pressable>
       ))}
@@ -428,7 +512,7 @@ if (route === 'transfers') {
             accessibilityLabel="Уведомления"
           >
             <Icon name="bell" size={23} color={C.text} />
-            {unread && <View style={{ position: 'absolute', top: 3, right: 3, width: 17, height: 17, borderRadius: 9, backgroundColor: C.red, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: '#fff', fontSize: 10 }}>1</Text></View>}
+            {notificationCount > 0 && <View style={{ position: 'absolute', top: 3, right: 3, width: 17, height: 17, borderRadius: 9, backgroundColor: C.red, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: '#fff', fontSize: 10 }}>{notificationCount > 99 ? '99+' : notificationCount}</Text></View>}
           </Pressable>
 
           <Pressable
@@ -536,6 +620,39 @@ if (route === 'transfers') {
                   mode === 'light' ? '#EEEEEE' : '#38383C',
               }} />
 
+              {requestCount > 0 && (
+                <Pressable
+                  onPress={() => {
+                    setNotificationsOpen(false);
+                    router.push('/staff');
+                  }}
+                  style={{
+                    backgroundColor: colors.surface,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    padding: 14,
+                    borderRadius: 10,
+                    gap: 6,
+                  }}
+                >
+                  <Text style={{
+                    color: colors.accent,
+                    fontWeight: '700',
+                    fontSize: 16,
+                  }}>
+                    Заявки на регистрацию
+                  </Text>
+
+                  <Text style={{ color: colors.text }}>
+                    Ожидают рассмотрения: {requestCount}
+                  </Text>
+
+                  <Text style={{ color: colors.accent }}>
+                    Перейти к сотрудникам ›
+                  </Text>
+                </Pressable>
+              )}
+
               {u.available ? (
                 <>
                   <Text style={{
@@ -630,7 +747,7 @@ if (route === 'transfers') {
                     </Text>
                   </Pressable>
                 </>
-              ) : (
+              ) : requestCount === 0 ? (
                 <View style={{
                   alignItems: 'center',
                   paddingVertical: 20,
@@ -649,7 +766,7 @@ if (route === 'transfers') {
                     Новых уведомлений нет
                   </Text>
                 </View>
-              )}
+              ) : null}
             </View>
           </SafeAreaView>
         </View>

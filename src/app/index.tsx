@@ -1,3 +1,4 @@
+import { RegistrationModal } from '@/components/registration-modal';
 import { useAppTheme, type ThemeMode } from '@/providers/theme';
 import { useState } from 'react';
 import {
@@ -22,6 +23,8 @@ const makeThemeC = (bmMode: ThemeMode) => ({
   ink: '#111111',
   red: '#c0271f',
   white: '#ffffff',
+  foreground: bmMode === 'light' ? '#111111' : '#FFFFFF',
+  divider: bmMode === 'light' ? '#D8D8D8' : '#FFFFFF',
 });
 const themeCacheC = { dark: makeThemeC('dark'), light: makeThemeC('light') };
 const getThemeC = (mode: ThemeMode) => themeCacheC[mode];
@@ -136,6 +139,8 @@ export default function Index() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [registrationOpen, setRegistrationOpen] = useState(false);
+
 
   const submit = async () => {
     if (!email.trim() || !password) {
@@ -182,15 +187,17 @@ export default function Index() {
     );
   };
 
-  const handleContactManager = () => {
-    Alert.alert(
-      'Нет аккаунта?',
-      'Обратитесь к менеджеру, чтобы получить доступ к приложению.'
-    );
+  const handleRegistration = () => {
+    setRegistrationOpen(true);
   };
 
   return (
     <View style={s.root}>
+      <RegistrationModal
+        visible={registrationOpen}
+        onClose={() => setRegistrationOpen(false)}
+      />
+
       <SafeAreaView style={s.safe}>
         <KeyboardAvoidingView
           style={s.keyboard}
@@ -321,12 +328,12 @@ export default function Index() {
 
           {/* Подвал */}
           <Text style={s.footer}>
-            нет аккаунта? Обратитесь к{' '}
+            Нет аккаунта? Обратитесь к{' '}
             <Text
               style={s.footerLink}
-              onPress={handleContactManager}
+              onPress={handleRegistration}
             >
-              менеджеру
+              администратору
             </Text>
           </Text>
         </KeyboardAvoidingView>
@@ -384,7 +391,7 @@ const makeThemes = (bmMode: ThemeMode) => StyleSheet.create({
     paddingLeft: 22,
     borderLeftWidth: 1,
     borderLeftColor: getThemeC(bmMode).red,
-    color: getThemeC(bmMode).white,
+    color: getThemeC(bmMode).foreground,
     fontSize: 22,
     fontWeight: '700',
     lineHeight: 40,
@@ -397,7 +404,7 @@ const makeThemes = (bmMode: ThemeMode) => StyleSheet.create({
 
   title: {
     marginLeft: 20,
-    color: getThemeC(bmMode).white,
+    color: getThemeC(bmMode).foreground,
     fontSize: 22,
     fontWeight: '700',
   },
@@ -406,7 +413,7 @@ const makeThemes = (bmMode: ThemeMode) => StyleSheet.create({
     marginTop: 2,
     marginBottom: 28,
     marginLeft: 20,
-    color: getThemeC(bmMode).white,
+    color: getThemeC(bmMode).foreground,
     fontSize: 14,
     fontWeight: '300',
   },
@@ -474,11 +481,11 @@ const makeThemes = (bmMode: ThemeMode) => StyleSheet.create({
   line: {
     flex: 1,
     height: 1,
-    backgroundColor: getThemeC(bmMode).white,
+    backgroundColor: getThemeC(bmMode).divider,
   },
 
   dividerText: {
-    color: getThemeC(bmMode).white,
+    color: getThemeC(bmMode).foreground,
     fontSize: 16,
     fontWeight: '300',
   },
@@ -495,7 +502,7 @@ const makeThemes = (bmMode: ThemeMode) => StyleSheet.create({
   footer: {
     marginTop: 24,
     textAlign: 'center',
-    color: getThemeC(bmMode).white,
+    color: getThemeC(bmMode).foreground,
     fontSize: 14,
     fontWeight: '700',
   },

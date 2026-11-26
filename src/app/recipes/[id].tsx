@@ -1,3 +1,4 @@
+import { usePermissions } from '@/lib/permissions';
 import { useAppTheme, type ThemeMode } from '@/providers/theme';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
@@ -18,6 +19,7 @@ export default function RecipeScreen() {
 
   const { id } = useLocalSearchParams<{ id: string }>();
   const { staff, session, offline: authOffline } = useAuth();
+  const { canRead } = usePermissions();
   const [recipe, setRecipe] = useState<Recipe | null>(null);
   const [steps, setSteps] = useState<RecipeStep[]>([]);
   const [variantId, setVariantId] = useState<number | null>(null);
@@ -136,7 +138,7 @@ export default function RecipeScreen() {
       <View style={s.variants}>{recipe.variants.map(v => <Pressable key={v.id} accessibilityRole="button" accessibilityState={{ selected: v.id === variantId }} onPress={() => setVariantId(v.id)} style={[s.variant, v.id === variantId && s.selected]}><Text style={ui.text}>{v.name}</Text></Pressable>)}</View>
       {variant && <Text style={ui.body}>Выход: {formatAmount(variant.yield_amount, variant.yield_unit)}</Text>}
       {recipe.recipe_type === 'prep' && variant &&
-        canCalculate(variant) ? (
+        canRead('prep_calculator') && canCalculate(variant) ? (
           <RecipeCalculator
             key={`${recipe.id}:${variant.id}:${variant.yield_amount}:${variant.yield_unit}`}
             variant={variant}

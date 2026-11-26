@@ -1,3 +1,5 @@
+import { RegistrationWaiting } from '@/components/registration-waiting';
+import { PermissionsProvider, usePermissions } from '@/lib/permissions';
 import { useStaffDevice } from '@/lib/staff-device';
 import { AppThemeProvider, useAppTheme } from '@/providers/theme';
 
@@ -21,6 +23,7 @@ function Routes() {
   const { mode, colors } = useAppTheme();
   const { session, staff, loading, error, retry, signOut, offline } = useAuth();
   const [logoutError, setLogoutError] = useState('');
+  const { canRead, ready, canManage } = usePermissions();
 
   useStaffDevice(
     session?.user.id ?? null,
@@ -31,6 +34,10 @@ function Routes() {
   useEffect(() => {
     void SplashScreen.hideAsync().catch(() => {});
   }, []);
+
+  if (!loading && session && !staff) {
+    return <RegistrationWaiting key={session.user.id} />;
+  }
 
   if (loading || (session && !staff)) {
     return (
@@ -106,19 +113,41 @@ function Routes() {
 
       <Stack.Protected guard={!!session && !!staff}>
         <Stack.Screen name="home" />
+      </Stack.Protected>
+
+      <Stack.Protected guard={!!session && !!staff && ready && canRead('recipes')}>
         <Stack.Screen name="recipes/index" />
         <Stack.Screen name="recipes/[id]" />
       </Stack.Protected>
 
-      <Stack.Protected guard={!!session && !!staff && !offline}>
+      <Stack.Protected guard={!!session && !!staff && !offline && canRead('transfers')}>
         <Stack.Screen name="transfers/index" />
         <Stack.Screen name="transfers/create" />
         <Stack.Screen name="transfers/[id]" />
-        <Stack.Screen name="notifications" />
+      </Stack.Protected>
+
+      <Stack.Protected guard={!!session && !!staff && !offline && canRead('storage')}>
         <Stack.Screen name="storage" />
+      </Stack.Protected>
+
+      <Stack.Protected guard={!!session && !!staff && !offline && canRead('orders')}>
         <Stack.Screen name="orders" />
+      </Stack.Protected>
+
+      <Stack.Protected guard={!!session && !!staff?.isAdmin && !offline && canRead('orders')}>
         <Stack.Screen name="admin/orders" />
+      </Stack.Protected>
+
+      <Stack.Protected guard={!!session && !!staff && !offline && canRead('home')}>
+        <Stack.Screen name="notifications" />
         <Stack.Screen name="explore" />
+      </Stack.Protected>
+
+      <Stack.Protected guard={!!session && !!staff?.isAdmin && ready && !offline && canManage('staff')}>
+        <Stack.Screen name="staff" />
+      </Stack.Protected>
+
+      <Stack.Protected guard={!!session && !!staff && !offline && canRead('settings')}>
         <Stack.Screen name="settings" />
       </Stack.Protected>
     </Stack>
@@ -298,12 +327,12 @@ export default function RootLayout() {
     <AppThemeProvider>
     <SafeAreaProvider>
       <AuthProvider>
-        <UpdateProvider>
+        <PermissionsProvider><UpdateProvider>
           <View style={{ flex: 1 }}>
             <WebUpdateNotice />
             <Routes />
           </View>
-        </UpdateProvider>
+        </UpdateProvider></PermissionsProvider>
       </AuthProvider>
     </SafeAreaProvider>
     </AppThemeProvider>

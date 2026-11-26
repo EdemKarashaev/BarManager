@@ -1,3 +1,4 @@
+import { usePermissions } from '@/lib/permissions';
 import { useAppTheme, type ThemeMode } from '@/providers/theme';
 import { RecipeCreate } from '@/components/recipe-create';
 import { RecipeAdminMenu } from '@/components/recipe-admin-menu';
@@ -21,9 +22,12 @@ export default function RecipesScreen() {
   const { staff, session, offline } = useAuth();
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [query, setQuery] = useState('');
+  const { canRead, canManage } = usePermissions();
   const isAdmin = staff?.isAdmin === true;
+  const canArchive = isAdmin && !offline && canRead('recipes_archive');
+  const canEdit = isAdmin && !offline && canManage('recipes');
   const [archiveMode, setArchiveMode] = useState(false);
-  const inArchive = isAdmin && archiveMode;
+  const inArchive = canArchive && archiveMode;
 
   const [filter, setFilter] = useState<Filter>('all');
   const [category, setCategory] = useState('');
@@ -148,7 +152,7 @@ export default function RecipesScreen() {
       <TextInput accessibilityLabel="Поиск ТТК по названию и ингредиентам" placeholder="Название или ингредиент" placeholderTextColor={palette.muted} value={query} onChangeText={setQuery} autoCorrect={false} style={s.input} returnKeyType="search" />
       {!!query && <Pressable accessibilityRole="button" accessibilityLabel="Очистить поиск" onPress={() => setQuery('')} style={s.clear}><Text style={ui.text}>×</Text></Pressable>}
     </View>
-    {isAdmin && <View style={s.archiveTabs}>
+    {canArchive && <View style={s.archiveTabs}>
       {[false, true].map(value => (
         <Pressable
           key={String(value)}
@@ -177,7 +181,7 @@ export default function RecipesScreen() {
     {categories.length > 1 && <View><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chips}>
       {['', ...categories].map(c => <Pressable key={c} accessibilityRole="button" accessibilityState={{ selected: c === activeCategory }} onPress={() => setCategory(c)} style={[s.chip, c === activeCategory && s.selected]}><Text style={s.chipText}>{c || 'Все разделы'}</Text></Pressable>)}
     </ScrollView></View>}
-    {isAdmin && <View style={{
+    {canEdit && <View style={{
       marginHorizontal: 14,
       marginTop: 8,
       marginBottom: 4,
@@ -215,7 +219,7 @@ export default function RecipesScreen() {
               В архиве
             </Text>}
         </Pressable>
-        {isAdmin && <RecipeAdminMenu
+        {canEdit && <RecipeAdminMenu
           recipe={item}
           disabled={syncing || loading}
           onChanged={() => setRevision(v => v + 1)}
