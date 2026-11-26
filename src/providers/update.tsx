@@ -1,3 +1,5 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import Constants from 'expo-constants';
 
 import {
     createContext,
@@ -15,10 +17,19 @@ import {
     checkUpdate,
     installUpdate,
     registerPush,
+    unregisterPush,
 } from '@/lib/android-update';
+
+import type { AvailableUpdate } from '@/lib/app-version';
 
 const Context = createContext({
   available: '',
+  availableVersion: '',
+  availableChangelog: '',
+  availableReleaseDate: '',
+  pushEnabled: true,
+  pushReady: false,
+  setPushEnabled: async (_enabled: boolean) => {},
   unread: false,
   busy: false,
   checking: false,
@@ -54,8 +65,10 @@ export function UpdateProvider({
   const { session, staff, offline } = useAuth();
   const userId = session?.user.id;
 
-  const [available, setAvailable] = useState('');
-  const [seen, setSeen] = useState('');
+  const [updateInfo, setUpdateInfo] =
+    useState<AvailableUpdate | null>(null);
+
+  const available = updateInfo?.id ?? '';
   const [busy, setBusy] = useState(false);
   const [checking, setChecking] = useState(false);
   const [connecting, setConnecting] = useState(false);
@@ -63,12 +76,39 @@ export function UpdateProvider({
   const [pushStatus, setPushStatus] = useState('');
   const [lastChecked, setLastChecked] = useState('');
 
+  const [pushEnabled, setPushPreference] = useState(true);
+  const [pushReady, setPushReady] = useState(false);
+  const pushEnabledRef = useRef(true);
+  const pushKey = 'bm:push-enabled';
+
+  useEffect(() => {
+    AsyncStorage.getItem(pushKey)
+      .then(value => {
+        const enabled = value !== 'false';
+        pushEnabledRef.current = enabled;
+        setPushPreference(enabled);
+        setPushReady(true);
+
+        if (!enabled) {
+          setPushStatus('Уведомления отключены');
+        }
+      })
+      .catch(() => {
+        setPushStatus('Не удалось загрузить настройки');
+      });
+  }, []);
+
   const checkingRef = useRef(false);
   const connectingRef = useRef(false);
   const installing = useRef(false);
 
   async function check() {
     if (Platform.OS !== 'android' || offline) return;
+    if (__DEV__ || Constants.executionEnvironment === 'storeClient') {
+      setMessage('Проверка обновлений доступна в установленном APK');
+      return;
+    }
+
     if (checkingRef.current || installing.current) return;
 
     checkingRef.current = true;
@@ -78,7 +118,7 @@ export function UpdateProvider({
     try {
       const result = await checkUpdate();
 
-      setAvailable(result ?? '');
+      setUpdateInfo(result);
 
       setLastChecked(
         new Date().toLocaleString('ru-RU')
@@ -90,8 +130,9 @@ export function UpdateProvider({
           : 'Обновлений не найдено'
       );
     } catch (error) {
+      console.warn('Update check:', error);
       setMessage(
-        'Ошибка проверки: ' + errorMessage(error)
+        'Не удалось проверить обновления. Попробуйте позже.'
       );
     } finally {
       checkingRef.current = false;
@@ -107,6 +148,13 @@ export function UpdateProvider({
       return;
     }
 
+    if (!pushReady || !pushEnabledRef.current) return;
+
+    if (__DEV__ || Constants.executionEnvironment === 'storeClient') {
+      setPushStatus('Push доступны в установленном APK');
+      return;
+    }
+
     if (connectingRef.current) return;
 
     connectingRef.current = true;
@@ -117,8 +165,9 @@ export function UpdateProvider({
       const result = await registerPush(userId);
       setPushStatus(result);
     } catch (error) {
+      console.warn('Push registration:', error);
       setPushStatus(
-        'Ошибка подключения: ' + errorMessage(error)
+        'Не удалось подключить уведомления. Повторите попытку.'
       );
     } finally {
       connectingRef.current = false;
@@ -134,7 +183,6 @@ export function UpdateProvider({
     ) return;
 
     void check();
-    void enablePush();
 
     const sub = AppState.addEventListener(
       'change',
@@ -156,6 +204,53 @@ export function UpdateProvider({
       clearInterval(timer);
     };
   }, [userId, !!staff, offline]);
+
+  async function setPushEnabled(enabled: boolean) {
+    if (
+      Platform.OS !== 'android' ||
+      !pushReady || offline ||
+      connectingRef.current || installing.current
+    ) return;
+
+    connectingRef.current = true;
+    setConnecting(true);
+
+    try {
+      if (!enabled) {
+        if (!__DEV__ && Constants.executionEnvironment !== 'storeClient') {
+          await unregisterPush();
+        }
+      }
+
+      await AsyncStorage.setItem(pushKey, String(enabled));
+
+      pushEnabledRef.current = enabled;
+      setPushPreference(enabled);
+
+      setPushStatus(
+        enabled
+          ? 'Ожидает подключения'
+          : 'Уведомления отключены'
+      );
+    } catch (error) {
+      console.warn('Push settings:', error);
+      setPushStatus(
+        'Не удалось изменить настройку. Повторите попытку.'
+      );
+    } finally {
+      connectingRef.current = false;
+      setConnecting(false);
+    }
+  }
+
+  useEffect(() => {
+    if (
+      pushReady && pushEnabled &&
+      userId && staff && !offline
+    ) {
+      void enablePush();
+    }
+  }, [pushReady, pushEnabled, userId, !!staff, offline]);
 
   async function install() {
     if (offline) return;
@@ -186,7 +281,13 @@ export function UpdateProvider({
     <Context.Provider
       value={{
         available,
-        unread: !!available && available !== seen,
+        availableVersion: updateInfo?.version ?? '',
+        availableChangelog: updateInfo?.changelog ?? '',
+        availableReleaseDate: updateInfo?.releasedAt ?? '',
+        pushEnabled,
+        pushReady,
+        setPushEnabled,
+        unread: !!available,
         busy,
         checking,
         connecting,
@@ -195,7 +296,7 @@ export function UpdateProvider({
         lastChecked,
         check,
         install,
-        read: () => setSeen(available),
+        read: () => {},
         enablePush,
       }}
     >

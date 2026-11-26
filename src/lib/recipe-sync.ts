@@ -20,7 +20,7 @@ export async function loadLocalRecipes(
   return {
     ...snapshot,
     recipes: snapshot.recipes.filter(
-      recipe => recipe.admin_only === false
+      recipe => recipe.admin_only === false && !recipe.archived_at
     ),
   };
 }
@@ -35,12 +35,12 @@ export async function syncRecipes(
   const rows = await fetchRecipes(signal);
 
   const recipes = rows.filter(
-    recipe => isAdmin || recipe.admin_only === false
+    recipe => isAdmin || (recipe.admin_only === false && !recipe.archived_at)
   );
 
   // Hidden administrative recipes are never persisted.
   const publicRecipes = recipes.filter(
-    recipe => recipe.admin_only === false
+    recipe => recipe.admin_only === false && !recipe.archived_at
   );
 
   const steps = await fetchRecipeSteps(

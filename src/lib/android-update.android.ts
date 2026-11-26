@@ -5,6 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import * as Updates from 'expo-updates';
+import type { AvailableUpdate } from '@/lib/app-version';
 
 const KEY = 'bm:push-token';
 
@@ -25,7 +26,7 @@ Notifications.setNotificationHandler({
   }),
 });
 
-export async function checkUpdate(): Promise<string | null> {
+export async function checkUpdate(): Promise<AvailableUpdate | null> {
   if (!Updates.isEnabled) return null;
 
   const result = await Updates.checkForUpdateAsync();
@@ -33,10 +34,33 @@ export async function checkUpdate(): Promise<string | null> {
   if (!result.isAvailable) return null;
 
   const manifest = result.manifest as
-    | { id?: string }
+    | {
+        id?: string;
+        extra?: {
+          expoClient?: {
+            extra?: {
+              bmRelease?: {
+                version?: unknown;
+                changelog?: unknown;
+                releasedAt?: unknown;
+              };
+            };
+          };
+        };
+      }
     | undefined;
 
-  return manifest?.id ?? 'available';
+  const release = manifest?.extra?.expoClient?.extra?.bmRelease;
+
+  return {
+    id: manifest?.id ?? 'available',
+    version: typeof release?.version === 'string'
+      ? release.version : '',
+    changelog: typeof release?.changelog === 'string'
+      ? release.changelog : '',
+    releasedAt: typeof release?.releasedAt === 'string'
+      ? release.releasedAt : '',
+  };
 }
 
 export async function installUpdate(): Promise<void> {

@@ -1,3 +1,4 @@
+import { useAppTheme, type ThemeMode } from '@/providers/theme';
 import { useState } from 'react';
 import {
   ActivityIndicator,
@@ -14,17 +15,23 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle, Path, Rect } from 'react-native-svg';
 import { supabase } from '../lib/supabase';
 
-const C = {
-  bg: '#1a1415',
+const makeThemeC = (bmMode: ThemeMode) => ({
+  bg: bmMode === 'light' ? '#FFFFFF' : '#1a1415',
   paper: '#f7f2f2',
   field: '#e4e0e0',
   ink: '#111111',
   red: '#c0271f',
   white: '#ffffff',
-};
+});
+const themeCacheC = { dark: makeThemeC('dark'), light: makeThemeC('light') };
+const getThemeC = (mode: ThemeMode) => themeCacheC[mode];
+
 
 // Иконка почты
-const MailIcon = () => (
+const MailIcon = () => {
+  const { mode: bmMode } = useAppTheme();
+  const C = getThemeC(bmMode);
+return ((
   <Svg width={28} height={28} viewBox="0 0 24 24">
     <Rect
       x={2.5}
@@ -43,20 +50,26 @@ const MailIcon = () => (
       strokeWidth={2}
     />
   </Svg>
-);
+)); };
 
 // Иконка пароля
-const KeyIcon = () => (
+const KeyIcon = () => {
+  const { mode: bmMode } = useAppTheme();
+  const C = getThemeC(bmMode);
+return ((
   <Svg width={28} height={28} viewBox="0 0 24 24">
     <Path
       d="M14.5 3a6.5 6.5 0 0 0-6.2 8.4L2 17.7V22h4.3v-2.2h2.2v-2.2h2.2l1.2-1.2A6.5 6.5 0 1 0 14.5 3zm2.3 3.5a1.7 1.7 0 1 1 0 3.4 1.7 1.7 0 0 1 0-3.4z"
       fill={C.ink}
     />
   </Svg>
-);
+)); };
 
 // Иконка показа пароля
-const EyeIcon = ({ crossed }: { crossed: boolean }) => (
+const EyeIcon = ({ crossed }: { crossed: boolean }) => {
+  const { mode: bmMode } = useAppTheme();
+  const C = getThemeC(bmMode);
+return ((
   <Svg width={28} height={28} viewBox="0 0 24 24">
     <Path
       d="M1 12s4-7.5 11-7.5S23 12 23 12s-4 7.5-11 7.5S1 12 1 12z"
@@ -72,20 +85,26 @@ const EyeIcon = ({ crossed }: { crossed: boolean }) => (
       />
     )}
   </Svg>
-);
+)); };
 
 // QR-иконка
-const QrIcon = () => (
+const QrIcon = () => {
+  const { mode: bmMode } = useAppTheme();
+  const C = getThemeC(bmMode);
+return ((
   <Svg width={28} height={28} viewBox="0 0 24 24">
     <Path
       d="M3 3h8v8H3zm2 2v4h4V5zm8-2h8v8h-8zm2 2v4h4V5zM3 13h8v8H3zm2 2v4h4v-4zm8-2h3v3h-3zm5 0h3v3h-3zm-5 5h3v3h-3zm5 0h3v3h-3z"
       fill={C.ink}
     />
   </Svg>
-);
+)); };
 
 // Логотип
-const LogoMark = () => (
+const LogoMark = () => {
+  const { mode: bmMode } = useAppTheme();
+  const C = getThemeC(bmMode);
+return ((
   <Svg width={36} height={28} viewBox="0 0 40 32">
     <Rect
       x={3}
@@ -106,9 +125,13 @@ const LogoMark = () => (
       strokeLinejoin="round"
     />
   </Svg>
-);
+)); };
 
 export default function Index() {
+  const { mode: bmMode } = useAppTheme();
+  const C = getThemeC(bmMode);
+  const s = getThemes(bmMode);
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -203,7 +226,7 @@ export default function Index() {
                 value={email}
                 onChangeText={setEmail}
                 placeholder="Email"
-                placeholderTextColor="#777777"
+                placeholderTextColor={(bmMode === 'light' ? '#666666' : "#777777")}
                 keyboardType="email-address"
                 autoCapitalize="none"
                 autoComplete="email"
@@ -222,7 +245,7 @@ export default function Index() {
                 value={password}
                 onChangeText={setPassword}
                 placeholder="Пароль"
-                placeholderTextColor="#777777"
+                placeholderTextColor={(bmMode === 'light' ? '#666666' : "#777777")}
                 secureTextEntry={!showPassword}
                 autoCapitalize="none"
                 autoComplete="password"
@@ -312,10 +335,10 @@ export default function Index() {
   );
 }
 
-const s = StyleSheet.create({
+const makeThemes = (bmMode: ThemeMode) => StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: C.bg,
+    backgroundColor: getThemeC(bmMode).bg,
   },
 
   safe: {
@@ -334,7 +357,7 @@ const s = StyleSheet.create({
     height: 42,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: C.paper,
+    backgroundColor: getThemeC(bmMode).paper,
     overflow: 'hidden',
   },
 
@@ -344,13 +367,13 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRightWidth: 2,
-    borderRightColor: C.ink,
+    borderRightColor: getThemeC(bmMode).ink,
   },
 
   logoText: {
     flex: 1,
     textAlign: 'center',
-    color: C.ink,
+    color: getThemeC(bmMode).ink,
     fontSize: 15,
     letterSpacing: 7,
   },
@@ -360,8 +383,8 @@ const s = StyleSheet.create({
     marginLeft: 56,
     paddingLeft: 22,
     borderLeftWidth: 1,
-    borderLeftColor: C.red,
-    color: C.white,
+    borderLeftColor: getThemeC(bmMode).red,
+    color: getThemeC(bmMode).white,
     fontSize: 22,
     fontWeight: '700',
     lineHeight: 40,
@@ -374,7 +397,7 @@ const s = StyleSheet.create({
 
   title: {
     marginLeft: 20,
-    color: C.white,
+    color: getThemeC(bmMode).white,
     fontSize: 22,
     fontWeight: '700',
   },
@@ -383,7 +406,7 @@ const s = StyleSheet.create({
     marginTop: 2,
     marginBottom: 28,
     marginLeft: 20,
-    color: C.white,
+    color: getThemeC(bmMode).white,
     fontSize: 14,
     fontWeight: '300',
   },
@@ -398,14 +421,14 @@ const s = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     borderRadius: 14,
-    backgroundColor: C.field,
+    backgroundColor: getThemeC(bmMode).field,
     overflow: 'hidden',
   },
 
   input: {
     flex: 1,
     height: '100%',
-    color: C.ink,
+    color: getThemeC(bmMode).ink,
     fontSize: 16,
   },
 
@@ -427,7 +450,7 @@ const s = StyleSheet.create({
 
   btnPrimary: {
     marginTop: 36,
-    backgroundColor: C.red,
+    backgroundColor: getThemeC(bmMode).red,
   },
 
   btnDisabled: {
@@ -435,7 +458,7 @@ const s = StyleSheet.create({
   },
 
   btnPrimaryText: {
-    color: C.white,
+    color: getThemeC(bmMode).white,
     fontSize: 28,
     fontWeight: '300',
     letterSpacing: 7,
@@ -451,33 +474,35 @@ const s = StyleSheet.create({
   line: {
     flex: 1,
     height: 1,
-    backgroundColor: C.white,
+    backgroundColor: getThemeC(bmMode).white,
   },
 
   dividerText: {
-    color: C.white,
+    color: getThemeC(bmMode).white,
     fontSize: 16,
     fontWeight: '300',
   },
 
   btnSecondary: {
-    backgroundColor: C.field,
+    backgroundColor: getThemeC(bmMode).field,
   },
 
   btnSecondaryText: {
-    color: C.ink,
+    color: getThemeC(bmMode).ink,
     fontSize: 20,
   },
 
   footer: {
     marginTop: 24,
     textAlign: 'center',
-    color: C.white,
+    color: getThemeC(bmMode).white,
     fontSize: 14,
     fontWeight: '700',
   },
 
   footerLink: {
-    color: C.red,
+    color: getThemeC(bmMode).red,
   },
 });
+const themeCaches = { dark: makeThemes('dark'), light: makeThemes('light') };
+const getThemes = (mode: ThemeMode) => themeCaches[mode];

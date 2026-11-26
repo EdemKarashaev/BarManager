@@ -76,7 +76,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       if (profile.error) throw profile.error;
       const role = await supabase.from('roles').select('id,Name,Role').eq('id', profile.data.role_id).abortSignal(controller.signal).single();
       if (role.error) throw role.error;
-      if (![1, 2, 3].includes(role.data.id)) throw new Error('Unknown role');
+      if (!['ADMIN', 'Bartender', 'Reader', 'JUNIOR_BARTENDER'].includes(role.data.Name)) throw new Error('Unknown role');
       const staff = {
         roleId: role.data.id,
         roleName: role.data.Role || role.data.Name,

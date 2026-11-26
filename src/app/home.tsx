@@ -1,3 +1,7 @@
+import { APP_VERSION } from '@/lib/app-version';
+import { usePermissions } from '@/lib/permissions';
+import { useAppTheme } from '@/providers/theme';
+import { useMemo } from 'react';
 import { useUpdate } from '@/providers/update';
 
 import { useAuth } from '@/providers/auth';
@@ -6,6 +10,8 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import {
   Alert,
+  Modal,
+  ActivityIndicator,
   Pressable,
   ScrollView,
   StatusBar,
@@ -122,8 +128,15 @@ function Icon({
 }
 
 export default function HomeScreen() {
+  const { mode, colors } = useAppTheme();
+  const styles = useMemo(
+    () => createStyles(mode),
+    [mode]
+  );
   const { staff, signOut, offline, retry } = useAuth();
-  const { unread } = useUpdate();
+  const u = useUpdate();
+  const unread = !!u.available;
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [logoutError, setLogoutError] = useState('');
   const appVersion = Constants.expoConfig?.version ?? '—';
   const releaseChannel = Constants.expoConfig?.extra?.releaseChannel ?? 'beta';
@@ -131,34 +144,68 @@ export default function HomeScreen() {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [activeSection, setActiveSection] = useState<Route | null>(null);
 
+  const { canRead, ready } = usePermissions();
+
+  const sectionKeys: Record<Route, string> = {
+    ttk: 'recipes',
+    writeoffs: 'writeoffs',
+    order: 'orders',
+    transfers: 'transfers',
+    checklist: 'checklists',
+    storage: 'storage',
+    stock: 'stock',
+    info: 'info',
+    encyclopedia: 'encyclopedia',
+  };
+
+  const visibleSections = SECTIONS.filter(
+    item => canRead(sectionKeys[item.route])
+  );
+
+  const visibleTabs = TABS.filter(item => {
+    if (item.key === 'orders') {
+      return canRead('orders');
+    }
+    if (item.key === 'guide') {
+      return visibleSections.some(section =>
+        ['ttk', 'storage', 'info', 'encyclopedia']
+          .includes(section.route)
+      );
+    }
+    if (item.key === 'settings') {
+      return canRead('settings');
+    }
+    return canRead('home');
+  });
+
   if (offline) {
     return (
       <SafeAreaView style={{
         flex: 1,
-        backgroundColor: '#151518',
+        backgroundColor: colors.background,
         padding: 20,
         gap: 16,
       }}>
         <Text style={{
-          color: '#C7A56B',
+          color: colors.accent,
           fontSize: 24,
           fontWeight: '800',
           letterSpacing: 2,
         }}>BAR MANAGER</Text>
 
         <View style={{
-          backgroundColor: '#29251F',
+          backgroundColor: mode === 'light' ? '#F5F5F5' : '#29251F',
           padding: 16,
           borderRadius: 12,
           gap: 8,
         }}>
           <Text style={{
-            color: '#C7A56B',
+            color: colors.accent,
             fontSize: 17,
             fontWeight: '700',
           }}>Автономный режим</Text>
 
-          <Text style={{ color: '#AAA', fontSize: 13 }}>
+          <Text style={{ color: colors.muted, fontSize: 13 }}>
             Нет связи с сервером. Доступны сохранённые ТТК.
           </Text>
         </View>
@@ -166,14 +213,14 @@ export default function HomeScreen() {
         <Pressable
           onPress={() => router.push('/recipes')}
           style={{
-            backgroundColor: '#252529',
+            backgroundColor: colors.surface,
             borderRadius: 12,
             padding: 20,
             borderWidth: 1,
             borderColor: '#C7A56B',
           }}>
           <Text style={{
-            color: '#FFF',
+            color: colors.text,
             fontSize: 20,
             fontWeight: '700',
           }}>Технологические карты ›</Text>
@@ -220,6 +267,8 @@ export default function HomeScreen() {
   }
 
   const openSection = (route: Route) => {
+    if (!canRead(sectionKeys[route])) return;
+
     if (route === 'order') { setDropdownOpen(false); router.push('/orders'); return; }
     // storage-rules: linked route
     if (route === 'storage') {
@@ -264,7 +313,7 @@ if (route === 'transfers') {
   );
 
   const renderContent = () => {
-    if (activeSection) {
+    if (activeSection && canRead(sectionKeys[activeSection])) {
       return (
         <View style={styles.detail}>
           <Pressable
@@ -283,19 +332,26 @@ if (route === 'transfers') {
       );
     }
 
-    if (activeTab === 'menu') {
+    if (!ready) {
+      return <Text style={styles.greeting}>
+        Загрузка прав доступа…
+      </Text>;
+    }
+
+    if (activeTab === 'menu' ||
+        !visibleTabs.some(item => item.key === activeTab)) {
       return (
         <>
           <Text style={styles.greeting}>Добрый день!
           </Text>
           <Text style={styles.sectionCaption}>РАЗДЕЛЫ ПРИЛОЖЕНИЯ</Text>
-          {renderSectionGrid(SECTIONS)}
+          {renderSectionGrid(visibleSections)}
         </>
       );
     }
 
     if (activeTab === 'guide') {
-      const guideItems = SECTIONS.filter((item) =>
+      const guideItems = visibleSections.filter((item) =>
         ['ttk', 'storage', 'info', 'encyclopedia'].includes(item.route)
       );
 
@@ -309,7 +365,7 @@ if (route === 'transfers') {
     }
 
     if (activeTab === 'orders') {
-      const orderItems = SECTIONS.filter((item) =>
+      const orderItems = visibleSections.filter((item) =>
         ['order', 'writeoffs', 'transfers', 'stock'].includes(item.route)
       );
 
@@ -333,12 +389,10 @@ if (route === 'transfers') {
         </View>
         <Pressable
           style={styles.settingsCard}
-          onPress={() =>
-            Alert.alert('Настройки', 'Дополнительные настройки появятся позже.')
-          }
+          onPress={() => router.push("/settings")}
         >
           <Text style={styles.settingsTitle}>Настройки приложения</Text>
-          <Text style={styles.settingsText}>Язык, уведомления и другие параметры</Text>
+          <Text style={styles.settingsText}>Пароль, оформление, обновления и уведомления</Text>
         </Pressable>
         <View style={styles.versionFooter}>
           <Text style={styles.versionBrand}>BAR MANAGER</Text>
@@ -350,7 +404,7 @@ if (route === 'transfers') {
 
   return (
     <SafeAreaView style={styles.screen}>
-   <StatusBar barStyle="light-content" />
+   <StatusBar barStyle={mode === 'light' ? 'dark-content' : 'light-content'} />
 
       <View style={styles.header}>
         <View style={styles.brand}>
@@ -366,7 +420,10 @@ if (route === 'transfers') {
 
         <View style={styles.headerActions}>
           <Pressable
-            onPress={() => router.push('/notifications')}
+            onPress={() => {
+              setDropdownOpen(false);
+              setNotificationsOpen(true);
+            }}
             style={styles.headerButton}
             accessibilityLabel="Уведомления"
           >
@@ -390,7 +447,7 @@ if (route === 'transfers') {
         {dropdownOpen && (
           <View style={styles.dropdown}>
             <Text style={styles.dropdownTitle}>БЫСТРЫЙ ПЕРЕХОД</Text>
-            {SECTIONS.map((item) => (
+            {visibleSections.map((item) => (
               <Pressable
                 key={item.route}
                 onPress={() => openSection(item.route)}
@@ -403,6 +460,201 @@ if (route === 'transfers') {
         )}
       </View>
 
+
+      <Modal
+        visible={notificationsOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!u.busy) setNotificationsOpen(false);
+        }}
+      >
+        <View style={{ flex: 1 }}>
+          <Pressable
+            onPress={() => {
+              if (!u.busy) setNotificationsOpen(false);
+            }}
+            style={{
+              ...StyleSheet.absoluteFill,
+              backgroundColor: 'rgba(0,0,0,0.12)',
+            }}
+          />
+
+          <SafeAreaView
+            pointerEvents="box-none"
+            style={{ flex: 1 }}
+          >
+            <View style={{
+              alignSelf: 'flex-end',
+              marginTop: 62,
+              marginRight: 12,
+              width: 310,
+              maxWidth: '90%',
+              borderRadius: 16,
+              padding: 16,
+              gap: 14,
+              backgroundColor:
+                mode === 'light' ? '#FFFFFF' : '#242428',
+              borderWidth: 1,
+              borderColor:
+                mode === 'light' ? '#DDDDDD' : '#38383C',
+              elevation: 8,
+              shadowColor: '#000000',
+              shadowOpacity: 0.18,
+              shadowRadius: 12,
+              shadowOffset: { width: 0, height: 5 },
+            }}>
+              <View style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}>
+                <Text style={{
+                  color: colors.text,
+                  fontSize: 18,
+                  fontWeight: '700',
+                }}>
+                  Уведомления
+                </Text>
+
+                <Pressable
+                  disabled={u.busy}
+                  hitSlop={12}
+                  accessibilityLabel="Закрыть уведомления"
+                  onPress={() => setNotificationsOpen(false)}
+                >
+                  <Text style={{
+                    color: colors.muted,
+                    fontSize: 26,
+                  }}>×</Text>
+                </Pressable>
+              </View>
+
+              <View style={{
+                height: 1,
+                backgroundColor:
+                  mode === 'light' ? '#EEEEEE' : '#38383C',
+              }} />
+
+              {u.available ? (
+                <>
+                  <Text style={{
+                    color: colors.accent,
+                    fontSize: 16,
+                    fontWeight: '700',
+                  }}>
+                    {u.availableVersion
+                      ? `Доступна версия ${u.availableVersion}`
+                      : 'Доступно обновление'}
+                  </Text>
+
+                  <Text style={{
+                    color: colors.text,
+                    fontSize: 14,
+                    lineHeight: 20,
+                  }}>
+                    {u.availableChangelog ||
+                      'Вышла новая версия Bar Manager.'}
+                  </Text>
+
+                  {!!u.availableVersion && (
+                    <View style={{
+                      flexDirection: 'row',
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                      gap: 12,
+                      padding: 12,
+                      borderRadius: 10,
+                      backgroundColor: mode === 'light'
+                        ? '#F0F0F0' : '#303035',
+                    }}>
+                      <Text style={{ color: colors.muted }}>
+                        {APP_VERSION}
+                      </Text>
+                      <Text style={{ color: colors.muted }}>
+                        →
+                      </Text>
+                      <Text style={{
+                        color: colors.accent,
+                        fontWeight: '700',
+                      }}>
+                        {u.availableVersion}
+                      </Text>
+                    </View>
+                  )}
+
+                  {!!u.message && (
+                    <Text style={{
+                      color: colors.muted,
+                      fontSize: 12,
+                    }}>
+                      {u.message}
+                    </Text>
+                  )}
+
+                  <Pressable
+                    disabled={
+                      u.busy || u.checking ||
+                      u.connecting || offline
+                    }
+                    onPress={() => void u.install()}
+                    style={{
+                      backgroundColor: colors.accent,
+                      padding: 13,
+                      borderRadius: 10,
+                      alignItems: 'center',
+                      flexDirection: 'row',
+                      justifyContent: 'center',
+                      gap: 8,
+                      opacity:
+                        u.busy || u.checking ||
+                        u.connecting || offline ? 0.5 : 1,
+                    }}
+                  >
+                    {u.busy && (
+                      <ActivityIndicator
+                        color={mode === 'light'
+                          ? '#FFFFFF' : '#151518'}
+                      />
+                    )}
+
+                    <Text style={{
+                      color: mode === 'light'
+                        ? '#FFFFFF' : '#151518',
+                      fontWeight: '700',
+                      fontSize: 14,
+                    }}>
+                      {u.busy
+                        ? 'Загрузка…'
+                        : 'Обновить приложение'}
+                    </Text>
+                  </Pressable>
+                </>
+              ) : (
+                <View style={{
+                  alignItems: 'center',
+                  paddingVertical: 20,
+                  gap: 12,
+                }}>
+                  <Icon
+                    name="bell"
+                    size={32}
+                    color={colors.muted}
+                  />
+
+                  <Text style={{
+                    color: colors.muted,
+                    fontSize: 14,
+                  }}>
+                    Новых уведомлений нет
+                  </Text>
+                </View>
+              )}
+            </View>
+          </SafeAreaView>
+        </View>
+      </Modal>
+
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.content}
@@ -412,7 +664,7 @@ if (route === 'transfers') {
       </ScrollView>
 
       <View style={styles.tabBar}>
-        {TABS.map((item) => {
+        {visibleTabs.map((item) => {
           const isActive = activeTab === item.key;
 
           return (
@@ -445,10 +697,10 @@ if (route === 'transfers') {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (mode: 'light' | 'dark') => StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: C.bg,
+    backgroundColor: mode === 'light' ? '#FFFFFF' : C.bg,
     paddingHorizontal: 16,
     paddingTop: 8,
     paddingBottom: 8,
@@ -456,7 +708,7 @@ const styles = StyleSheet.create({
 
   header: {
     height: 76,
-    backgroundColor: C.surface,
+    backgroundColor: mode === 'light' ? '#F5F5F5' : C.surface,
     borderRadius: 14,
     paddingHorizontal: 18,
     flexDirection: 'row',
@@ -522,7 +774,7 @@ const styles = StyleSheet.create({
     right: 8,
     width: 220,
     maxHeight: 390,
-    backgroundColor: C.surface,
+    backgroundColor: mode === 'light' ? '#F5F5F5' : C.surface,
     borderRadius: 12,
     padding: 12,
     elevation: 12,
@@ -565,14 +817,14 @@ const styles = StyleSheet.create({
   },
 
   greeting: {
-    color: C.surface,
+    color: mode === 'light' ? '#111111' : C.surface,
     fontSize: 25,
     fontWeight: '800',
     marginBottom: 8,
   },
 
   sectionCaption: {
-    color: '#A0A0A0',
+    color: mode === 'light' ? '#666666' : '#A0A0A0',
     fontSize: 10,
     fontWeight: '700',
     letterSpacing: 1.5,
@@ -589,7 +841,7 @@ const styles = StyleSheet.create({
   card: {
     width: '48%',
     minHeight: 88,
-    backgroundColor: C.surface,
+    backgroundColor: mode === 'light' ? '#F5F5F5' : C.surface,
     borderRadius: 13,
     paddingHorizontal: 12,
     paddingVertical: 16,
@@ -622,7 +874,7 @@ const styles = StyleSheet.create({
 
   tabBar: {
     minHeight: 72,
-    backgroundColor: C.surface,
+    backgroundColor: mode === 'light' ? '#F5F5F5' : C.surface,
     borderRadius: 14,
     flexDirection: 'row',
     alignItems: 'center',
@@ -679,14 +931,14 @@ const styles = StyleSheet.create({
   },
 
   detailTitle: {
-    color: C.surface,
+    color: mode === 'light' ? '#111111' : C.surface,
     fontSize: 27,
     fontWeight: '800',
     marginBottom: 12,
   },
 
   detailDescription: {
-    color: '#AAAAAA',
+    color: mode === 'light' ? '#666666' : '#AAAAAA',
     fontSize: 14,
     lineHeight: 21,
   },
@@ -703,19 +955,19 @@ const styles = StyleSheet.create({
   },
 
   versionBrand: {
-    color: '#C7A56B',
+    color: mode === 'light' ? '#CC0014' : '#C7A56B',
     fontSize: 12,
     fontWeight: '800',
     letterSpacing: 2,
   },
 
   versionText: {
-    color: '#999999',
+    color: mode === 'light' ? '#666666' : '#999999',
     fontSize: 12,
   },
 
   settingsCard: {
-    backgroundColor: C.surface,
+    backgroundColor: mode === 'light' ? '#F5F5F5' : C.surface,
     borderRadius: 13,
     padding: 18,
     gap: 7,

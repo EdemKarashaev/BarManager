@@ -1,8 +1,11 @@
 
 import { spawnSync } from 'node:child_process';
+import { nextVersion } from './release-version.mjs';
 import { randomUUID } from 'node:crypto';
 import {
     mkdirSync,
+    existsSync,
+    unlinkSync,
     readFileSync,
     writeFileSync,
 } from 'node:fs';
@@ -12,6 +15,8 @@ import { setTimeout as delay } from 'node:timers/promises';
 
 const CHANNEL = 'preview';
 const ENVIRONMENT = 'preview';
+const VERSION_PATH = 'src/config/release.json';
+const PENDING_PATH = '.release-android/pending.json';
 
 const NOTIFY_URL =
   'https://cdiunbffdbyzmmthehic.supabase.co/functions/v1/notify-update';
@@ -40,6 +45,21 @@ const resumeArg = args.find(
 const resume = resumeArg?.slice('--resume='.length);
 
 const dryRunOnly = args.includes('--dry-run');
+const both = args.includes('--both');
+
+const versionFlags = args.filter(
+  arg => ['--patch', '--minor', '--major'].includes(arg)
+);
+
+const releaseType = versionFlags[0]?.slice(2) ?? 'patch';
+
+const recipients = [
+  { email: 'just_2_feel@mail.ru' },
+  {
+    email: 'pt@ketch-up.ru',
+    allow_legacy_device: true,
+  },
+];
 
 const message = args
   .filter(arg => !arg.startsWith('--'))
@@ -208,7 +228,7 @@ function printResume(releasePath) {
 
   console.log(
     `npm run release:android -- --resume="${releasePath}"` +
-    (email ? ` --email="${email}"` : '')
+    (both ? ' --both' : email ? ` --email="${email}"` : '')
   );
 }
 
@@ -238,6 +258,25 @@ async function main() {
   if (dryRunOnly && !resume) {
     throw new Error(
       '--dry-run используется вместе с --resume'
+    );
+  }
+
+  if (both && emailArg) {
+    throw new Error('--both и --email нельзя совмещать');
+  }
+
+  if (versionFlags.length > 1) {
+    throw new Error('Укажи только один тип повышения версии');
+  }
+
+  if (resume && versionFlags.length) {
+    throw new Error('При --resume версия не повышается');
+  }
+
+  if (!resume && existsSync(PENDING_PATH)) {
+    throw new Error(
+      'Есть незавершённая публикация. Проверь EAS Dashboard и ' +
+      PENDING_PATH + '. Повторная публикация заблокирована.'
     );
   }
 
@@ -274,6 +313,24 @@ async function main() {
   console.log('Доступ к серверу подтверждён');
 
   if (!resume) {
+    const currentRelease = JSON.parse(
+      readFileSync(VERSION_PATH, 'utf8')
+    );
+
+    const newRelease = {
+      version: nextVersion(currentRelease.version, releaseType),
+      releasedAt: new Date().toISOString(),
+      changelog: message,
+    };
+
+    console.log(
+      'Версия Bar Manager:',
+      currentRelease.version, '→', newRelease.version
+    );
+
+    console.log('Описание:', message);
+    console.log('Тип релиза:', releaseType);
+
     console.log('\n[1/5] Проверка TypeScript');
 
     run('npm', ['run', 'typecheck']);
@@ -308,6 +365,29 @@ async function main() {
     const rawPath =
       `.release-android/${stamp}-eas.json`;
 
+    const releaseMessage =
+      `Bar Manager ${newRelease.version}: ${message}`;
+
+    writeFileSync(
+      PENDING_PATH,
+      JSON.stringify({
+        previous: currentRelease,
+        next: newRelease,
+        channel: CHANNEL,
+        rawPath,
+        releaseMessage,
+        startedAt: new Date().toISOString(),
+      }, null, 2),
+      { flag: 'wx' }
+    );
+
+    writeFileSync(
+      VERSION_PATH,
+      JSON.stringify(newRelease, null, 2) + '\n'
+    );
+
+    console.log('Публикуем версию:', newRelease.version);
+
     const result = spawnSync(
       'npx',
       [
@@ -316,7 +396,7 @@ async function main() {
         '--channel', CHANNEL,
         '--platform', 'android',
         '--environment', ENVIRONMENT,
-        '--message', message,
+        '--message', releaseMessage,
         '--json',
         '--non-interactive',
       ],
@@ -378,6 +458,9 @@ async function main() {
         android.groupId ??
         null,
       message,
+      app_release_version: newRelease.version,
+      changelog: newRelease.changelog,
+      released_at: newRelease.releasedAt,
       published_at: new Date().toISOString(),
     });
 
@@ -389,7 +472,10 @@ async function main() {
       JSON.stringify(release, null, 2)
     );
 
+    unlinkSync(PENDING_PATH);
+
     console.log('\nOTA успешно опубликовано');
+    console.log('Версия Bar Manager:', newRelease.version);
   }
 
   console.log('Update ID:', release.update_id);
@@ -398,6 +484,67 @@ async function main() {
   console.log('Файл релиза:', releasePath);
 
   printResume(releasePath);
+
+  if (both) {
+    const targets = [];
+
+    for (const recipient of recipients) {
+      const payload = {
+        mode: 'release',
+        update_id: release.update_id,
+        runtime_version: release.runtime_version,
+        channel: release.channel,
+        ...recipient,
+      };
+
+      console.log('Получатель:', recipient.email);
+
+      const preview = await notify({
+        ...payload,
+        dry_run: true,
+      });
+
+      printPreview(preview);
+      targets.push({ payload, preview });
+    }
+
+    const total = targets.reduce(
+      (sum, item) => sum + item.preview.eligible, 0
+    );
+
+    console.log('Всего устройств:', total);
+
+    if (dryRunOnly || total === 0) return;
+
+    const answer = await rl.question(
+      'Отправить push обоим аккаунтам? [y/N]: '
+    );
+
+    if (answer.trim().toLowerCase() !== 'y') return;
+
+    for (const { payload, preview } of targets) {
+      if (!preview.eligible) continue;
+
+      console.log('Отправка:', payload.email);
+
+      try {
+        const sent = await notify({
+          ...payload,
+          dry_run: false,
+          confirm_broadcast: false,
+        });
+
+        printSent(sent);
+      } catch (error) {
+        console.error(payload.email, error.message);
+        if (error.result) console.log(error.result);
+        process.exitCode = 2;
+      }
+    }
+
+    printResume(releasePath);
+    return;
+  }
 
   const payload = {
     mode: 'release',

@@ -1,68 +1,30 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAppTheme, type ThemeMode } from '@/providers/theme';
+import { RecipeCreate } from '@/components/recipe-create';
+import { RecipeAdminMenu } from '@/components/recipe-admin-menu';
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { BackBar, Badges, Message, palette, ui } from '@/components/recipe-ui';
+import { BackBar, Badges, Message, getThemepalette, getThemeui } from '@/components/recipe-ui';
 import { recipeError } from '@/lib/recipes';
 import { loadLocalRecipes, syncRecipes } from '@/lib/recipe-sync';
 import { matchesRecipe, visibleRecipes, type Recipe, type RecipeStatus, statusColors } from '@/lib/recipe-model';
 import { useAuth } from '@/providers/auth';
-type Filter = 'all' | RecipeStatus | 'hidden';
-const filters: { key: Filter; label: string }[] = [{ key: 'all', label: 'Все' }, { key: 'coming_soon', label: 'На ввод' }, { key: 'phasing_out', label: 'На вывод' }, { key: 'hidden', label: 'Скрытые' }];
+type Filter = 'all' | RecipeStatus;
+const filters: { key: Filter; label: string }[] = [{ key: 'all', label: 'Все' }, { key: 'coming_soon', label: 'На ввод' }, { key: 'phasing_out', label: 'На вывод' }];
 export default function RecipesScreen() {
+  const { mode: bmMode } = useAppTheme();
+  const s = getThemes(bmMode);
+  const palette = getThemepalette(bmMode);
+  const ui = getThemeui(bmMode);
+
   const { staff, session, offline } = useAuth();
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [query, setQuery] = useState('');
-  const [hiddenPreference, setHiddenPreference] = useState<{
-    userId: string;
-    enabled: boolean;
-  } | null>(null);
-
   const isAdmin = staff?.isAdmin === true;
-  const userId = session?.user.id;
-  const showHidden =
-    isAdmin &&
-    !!userId &&
-    hiddenPreference?.userId === userId &&
-    hiddenPreference.enabled;
+  const [archiveMode, setArchiveMode] = useState(false);
+  const inArchive = isAdmin && archiveMode;
 
-  useEffect(() => {
-    let alive = true;
-
-    if (!isAdmin || !userId) {
-      setHiddenPreference(null);
-      return;
-    }
-
-    AsyncStorage.getItem('bm:recipes:show-hidden:' + userId)
-      .then(value => {
-        if (alive) {
-          setHiddenPreference({
-            userId,
-            enabled: value === 'true',
-          });
-        }
-      })
-      .catch(() => {});
-
-    return () => { alive = false; };
-  }, [isAdmin, userId]);
-
-  const toggleHidden = () => {
-    if (!isAdmin || !userId) return;
-    const next = !showHidden;
-
-    setHiddenPreference({ userId, enabled: next });
-    setCategory('');
-
-    if (!next) setFilter('all');
-
-    void AsyncStorage.setItem(
-      'bm:recipes:show-hidden:' + userId,
-      String(next),
-    ).catch(() => {});
-  };
   const [filter, setFilter] = useState<Filter>('all');
   const [category, setCategory] = useState('');
   const [loading, setLoading] = useState(true);
@@ -111,16 +73,6 @@ export default function RecipesScreen() {
         return;
       }
 
-      if (
-        cached &&
-        staff?.isAdmin !== true &&
-        revision === 0 &&
-        Date.now() - cached.savedAt < 15 * 60 * 1000
-      ) {
-        setSyncStatus('ТТК сохранены на устройстве');
-        return;
-      }
-
       const result = await syncRecipes(
         userId,
         roleId,
@@ -160,8 +112,12 @@ export default function RecipesScreen() {
     };
   }, [revision, session?.user.id, staff?.roleId, staff?.isAdmin, offline]));
   const availableRecipes = useMemo(
-    () => visibleRecipes(recipes, showHidden),
-    [recipes, showHidden],
+    () => visibleRecipes(recipes, isAdmin).filter(r =>
+      inArchive
+        ? r.admin_only || !!r.archived_at
+        : !r.admin_only && !r.archived_at
+    ),
+    [recipes, isAdmin, inArchive],
   );
 
   const categories = useMemo(
@@ -176,16 +132,12 @@ export default function RecipesScreen() {
   const activeCategory =
     categories.includes(category) ? category : '';
 
-  const activeFilter =
-    filter === 'hidden' && !showHidden ? 'all' : filter;
+  const activeFilter = inArchive ? 'all' : filter;
 
   const shown = useMemo(() => availableRecipes.filter(r =>
     matchesRecipe(r, query) &&
     (!activeCategory || r.category?.name === activeCategory) &&
-    (activeFilter === 'all' ||
-      (activeFilter === 'hidden'
-        ? r.admin_only
-        : r.status === activeFilter))
+    (activeFilter === 'all' || r.status === activeFilter)
   ), [availableRecipes, query, activeCategory, activeFilter]);
 
   const reset = () => { setQuery(''); setCategory(''); setFilter('all'); };
@@ -196,29 +148,46 @@ export default function RecipesScreen() {
       <TextInput accessibilityLabel="Поиск ТТК по названию и ингредиентам" placeholder="Название или ингредиент" placeholderTextColor={palette.muted} value={query} onChangeText={setQuery} autoCorrect={false} style={s.input} returnKeyType="search" />
       {!!query && <Pressable accessibilityRole="button" accessibilityLabel="Очистить поиск" onPress={() => setQuery('')} style={s.clear}><Text style={ui.text}>×</Text></Pressable>}
     </View>
-    {isAdmin && <Pressable
-      accessibilityRole="checkbox"
-      accessibilityState={{ checked: showHidden }}
-      accessibilityLabel="Показывать скрытые позиции"
-      onPress={toggleHidden}
-      style={s.hiddenToggle}
-    >
-      <View style={[
-        s.checkbox,
-        showHidden && s.checkboxChecked
-      ]}>
-        {showHidden && <Text style={s.checkmark}>✓</Text>}
-      </View>
-      <Text style={s.hiddenLabel}>
-        Показывать скрытые позиции
-      </Text>
-    </Pressable>}
+    {isAdmin && <View style={s.archiveTabs}>
+      {[false, true].map(value => (
+        <Pressable
+          key={String(value)}
+          accessibilityRole="button"
+          accessibilityState={{ selected: inArchive === value }}
+          onPress={() => {
+            setArchiveMode(value);
+            setCategory('');
+            setFilter('all');
+          }}
+          style={[
+            s.archiveTab,
+            inArchive === value && s.selected,
+          ]}
+        >
+          <Text style={s.chipText}>
+            {value ? 'Архив' : 'Меню'}
+          </Text>
+        </Pressable>
+      ))}
+    </View>}
+
     <View><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chips}>
-      {filters.filter(f => f.key !== 'hidden' || showHidden).map(f => <Pressable key={f.key} accessibilityRole="button" accessibilityState={{ selected: activeFilter === f.key }} onPress={() => setFilter(f.key)} style={[s.chip, activeFilter === f.key && s.selected]}><Text style={s.chipText}>{f.label}</Text></Pressable>)}
+      {filters.map(f => <Pressable key={f.key} accessibilityRole="button" accessibilityState={{ selected: activeFilter === f.key }} onPress={() => setFilter(f.key)} style={[s.chip, activeFilter === f.key && s.selected]}><Text style={s.chipText}>{f.label}</Text></Pressable>)}
     </ScrollView></View>
     {categories.length > 1 && <View><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chips}>
       {['', ...categories].map(c => <Pressable key={c} accessibilityRole="button" accessibilityState={{ selected: c === activeCategory }} onPress={() => setCategory(c)} style={[s.chip, c === activeCategory && s.selected]}><Text style={s.chipText}>{c || 'Все разделы'}</Text></Pressable>)}
     </ScrollView></View>}
+    {isAdmin && <View style={{
+      marginHorizontal: 14,
+      marginTop: 8,
+      marginBottom: 4,
+    }}>
+      <RecipeCreate
+        recipes={recipes}
+        disabled={loading || syncing || !!error}
+        onCreated={() => setRevision(v => v + 1)}
+      />
+    </View>}
     {loading ? <View style={s.loading}><ActivityIndicator color={palette.text} /><Text style={ui.body}>Загружаем ТТК…</Text></View> : error ? <Message text={error} action="Повторить" onPress={() => setRevision(v => v+1)} /> : <>
       <View style={s.syncRow}>
         <Text style={s.syncText}>Найдено: {shown.length}</Text>
@@ -232,17 +201,46 @@ export default function RecipesScreen() {
       <FlatList data={shown} keyExtractor={r => String(r.id)} keyboardShouldPersistTaps="handled" contentContainerStyle={s.list}
         refreshing={syncing && !loading} onRefresh={() => setRevision(v => v+1)}
         ListEmptyComponent={<Message text={recipes.length ? 'По вашему запросу ничего не найдено.' : 'Доступных ТТК пока нет. Проверьте импорт данных и роль сотрудника.'} action={recipes.length ? 'Сбросить фильтры' : 'Обновить'} onPress={recipes.length ? reset : () => setRevision(v => v+1)} />}
-        renderItem={({ item }) => <Pressable accessibilityRole="button" accessibilityLabel={`Открыть ТТК: ${item.name || 'Без названия'}`} onPress={() => router.push({ pathname: '/recipes/[id]', params: { id: String(item.id) } })}
-          style={({ pressed }) => [s.card, { borderLeftColor: item.status === 'active' ? palette.border : statusColors[item.status] || palette.border }, pressed && { opacity: 0.75 }]}>
+        renderItem={({ item }) => <View style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+        }}><Pressable accessibilityRole="button" accessibilityLabel={`Открыть ТТК: ${item.name || 'Без названия'}`} onPress={() => router.push({ pathname: '/recipes/[id]', params: { id: String(item.id) } })}
+          style={({ pressed }) => [s.card, { flex: 1, borderLeftColor: item.status === 'active' ? palette.border : statusColors[item.status] || palette.border }, pressed && { opacity: 0.75 }]}>
           <Text style={s.category}>{item.category?.name || 'Без категории'}</Text>
           <Text style={s.name}>{item.name || 'Без названия'}</Text>
 
           <Badges recipe={item} />
-        </Pressable>} />
+          {!!item.archived_at &&
+            <Text style={{ color: palette.muted, fontSize: 12 }}>
+              В архиве
+            </Text>}
+        </Pressable>
+        {isAdmin && <RecipeAdminMenu
+          recipe={item}
+          disabled={syncing || loading}
+          onChanged={() => setRevision(v => v + 1)}
+        />}
+        </View>} />
     </>}
   </SafeAreaView>;
 }
-const s = StyleSheet.create({
+const makeThemes = (bmMode: ThemeMode) => StyleSheet.create({
+  archiveTabs: {
+    flexDirection: 'row',
+    marginHorizontal: 14,
+    marginTop: 8,
+    gap: 6,
+  },
+  archiveTab: {
+    flex: 1,
+    minHeight: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: getThemepalette(bmMode).border,
+    backgroundColor: getThemepalette(bmMode).panel,
+  },
   hiddenToggle: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -256,12 +254,12 @@ const s = StyleSheet.create({
     height: 22,
     borderRadius: 5,
     borderWidth: 1.5,
-    borderColor: '#C7A56B',
+    borderColor: (bmMode === 'light' ? '#DDDDDD' : '#C7A56B'),
     alignItems: 'center',
     justifyContent: 'center',
   },
   checkboxChecked: {
-    backgroundColor: '#C7A56B',
+    backgroundColor: (bmMode === 'light' ? '#CC0014' : '#C7A56B'),
   },
   checkmark: {
     color: '#181818',
@@ -269,7 +267,7 @@ const s = StyleSheet.create({
     fontWeight: '700',
   },
   hiddenLabel: {
-    color: palette.text,
+    color: getThemepalette(bmMode).text,
     fontSize: 13,
     fontWeight: '500',
   },
@@ -283,18 +281,21 @@ const s = StyleSheet.create({
     gap: 4,
   },
   syncText: {
-    color: palette.muted,
+    color: getThemepalette(bmMode).muted,
     fontSize: 11,
   },
-  title: { color: palette.text, fontSize: 25, fontWeight: '700' },
+  title: { color: getThemepalette(bmMode).text, fontSize: 25, fontWeight: '700' },
   header: { paddingHorizontal: 16, paddingBottom: 10, gap: 4 },
-  search: { marginHorizontal: 14, flexDirection: 'row', backgroundColor: palette.panel, borderWidth: 1, borderColor: palette.border, borderRadius: 12, alignItems: 'center' },
-  input: { flex: 1, padding: 10, color: palette.text, fontSize: 14, minHeight: 44 }, clear: { padding: 10 },
-  chips: { paddingHorizontal: 14, paddingTop: 8, paddingBottom: 2, gap: 6 }, chip: { paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10, backgroundColor: palette.panel, borderWidth: 1, borderColor: palette.border }, selected: { backgroundColor: '#413035', borderColor: '#C45C63' },
-  count: { marginHorizontal: 16, marginTop: 10, marginBottom: 6, color: palette.muted, fontSize: 11, letterSpacing: 1.5 },
+  search: { marginHorizontal: 14, flexDirection: 'row', backgroundColor: getThemepalette(bmMode).panel, borderWidth: 1, borderColor: getThemepalette(bmMode).border, borderRadius: 12, alignItems: 'center' },
+  input: { flex: 1, padding: 10, color: getThemepalette(bmMode).text, fontSize: 14, minHeight: 44 }, clear: { padding: 10 },
+  chips: { paddingHorizontal: 14, paddingTop: 8, paddingBottom: 2, gap: 6 }, chip: { paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10, backgroundColor: getThemepalette(bmMode).panel, borderWidth: 1, borderColor: getThemepalette(bmMode).border }, selected: { backgroundColor: (bmMode === 'light' ? '#F5F5F5' : '#413035'), borderColor: (bmMode === 'light' ? '#D99BA1' : '#C45C63') },
+  count: { marginHorizontal: 16, marginTop: 10, marginBottom: 6, color: getThemepalette(bmMode).muted, fontSize: 11, letterSpacing: 1.5 },
   list: { paddingHorizontal: 14, paddingBottom: 20, gap: 6 },
-  card: { backgroundColor: palette.panel, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, gap: 3, borderWidth: 1, borderColor: palette.border, borderLeftWidth: 4 },
-  chipText: { color: palette.text, fontSize: 13, fontWeight: '500' },
-  category: { color: palette.muted, fontSize: 11 }, name: { color: palette.text, fontSize: 17, fontWeight: '600', lineHeight: 22 },
+  card: { backgroundColor: getThemepalette(bmMode).panel, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, gap: 3, borderWidth: 1, borderColor: getThemepalette(bmMode).border, borderLeftWidth: 4 },
+  chipText: { color: getThemepalette(bmMode).text, fontSize: 13, fontWeight: '500' },
+  category: { color: getThemepalette(bmMode).muted, fontSize: 11 }, name: { color: getThemepalette(bmMode).text, fontSize: 17, fontWeight: '600', lineHeight: 22 },
   loading: { padding: 30, gap: 14, alignItems: 'center' },
 });
+const themeCaches = { dark: makeThemes('dark'), light: makeThemes('light') };
+const getThemes = (mode: ThemeMode) => themeCaches[mode];
+

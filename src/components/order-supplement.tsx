@@ -1,8 +1,9 @@
+import { useAppTheme } from '@/providers/theme';
 import { useEffect, useRef, useState } from "react";
 import { blockUpdates } from "@/lib/update-guard";
 import { Modal, ScrollView, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { OButton, OrderFilters, emptyFilters, os } from "./order-ui";
+import { OButton, OrderFilters, emptyFilters, getThemeos } from "./order-ui";
 import {
   decimalUnits,
   evaluateOrder,
@@ -25,6 +26,9 @@ export function OrderSupplement({
   items: OrderItem[];
   onDone: () => void;
 }) {
+  const { mode: bmMode } = useAppTheme();
+  const os = getThemeos(bmMode);
+
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [open, setOpen] = useState(false),
     [busy, setBusy] = useState(false),
@@ -181,7 +185,7 @@ export function OrderSupplement({
                   keyboardType="decimal-pad"
                   maxLength={12}
                   placeholder="Добавить количество"
-                  placeholderTextColor="#aaa"
+                  placeholderTextColor={(bmMode === 'light' ? '#666666' : "#aaa")}
                   value={quantities[p.id] || ""}
                   onChangeText={(q) =>
                     setQuantities({ ...quantities, [p.id]: q })

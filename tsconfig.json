@@ -3,7 +3,9 @@
   "compilerOptions": {
     "strict": true,
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": [
+        "./src/*"
+      ]
     }
   },
   "include": [
@@ -16,6 +18,8 @@
     "node_modules",
     "orders-supplement-update",
     "orders-update",
-    "supabase/functions"
+    "supabase/functions",
+    "backups",
+    "**/backups/**"
   ]
 }

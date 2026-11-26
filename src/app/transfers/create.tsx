@@ -1,3 +1,4 @@
+import { useAppTheme, type ThemeMode } from '@/providers/theme';
 
 import { supabase } from '@/lib/supabase';
 import { router } from 'expo-router';
@@ -32,16 +33,23 @@ type CartItem = {
   quantity: number;
 };
 
-const C = {
-  bg: '#151518',
-  card: '#242428',
-  red: '#CC0014',
-  white: '#FFFFFF',
-  muted: '#AAAAAA',
-  green: '#79D5A4',
-};
+const makeThemeC = (bmMode: ThemeMode) => ({
+  bg: (bmMode === 'light' ? '#FFFFFF' : '#151518'),
+  card: (bmMode === 'light' ? '#F5F5F5' : '#242428'),
+  red: (bmMode === 'light' ? '#B00020' : '#CC0014'),
+  white: (bmMode === 'light' ? '#111111' : '#FFFFFF'),
+  muted: (bmMode === 'light' ? '#666666' : '#AAAAAA'),
+  green: (bmMode === 'light' ? '#187747' : '#79D5A4'),
+});
+const themeCacheC = { dark: makeThemeC('dark'), light: makeThemeC('light') };
+const getThemeC = (mode: ThemeMode) => themeCacheC[mode];
+
 
 export default function CreateTransferScreen() {
+  const { mode: bmMode } = useAppTheme();
+  const C = getThemeC(bmMode);
+  const styles = getThemestyles(bmMode);
+
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [restaurantId, setRestaurantId] = useState<string | null>(null);
@@ -312,7 +320,7 @@ export default function CreateTransferScreen() {
             <TextInput
               style={styles.input}
               placeholder="Название или код"
-              placeholderTextColor="#777777"
+              placeholderTextColor={(bmMode === 'light' ? '#666666' : "#777777")}
               value={search}
               onChangeText={(text) => {
                 setSearch(text);
@@ -366,7 +374,7 @@ export default function CreateTransferScreen() {
                   style={styles.input}
                   keyboardType="decimal-pad"
                   placeholder="Например, 1,250"
-                  placeholderTextColor="#777777"
+                  placeholderTextColor={(bmMode === 'light' ? '#666666' : "#777777")}
                   value={quantity}
                   onChangeText={setQuantity}
                 />
@@ -427,7 +435,7 @@ export default function CreateTransferScreen() {
             onPress={confirmSend}
           >
             {sending ? (
-              <ActivityIndicator color="#FFFFFF" />
+              <ActivityIndicator color={(bmMode === 'light' ? '#111111' : "#FFFFFF")} />
             ) : (
               <Text style={styles.buttonText}>
                 Отправить перемещение · {cart.length}
@@ -440,15 +448,15 @@ export default function CreateTransferScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeThemestyles = (bmMode: ThemeMode) => StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: C.bg,
+    backgroundColor: getThemeC(bmMode).bg,
     padding: 20,
   },
   center: {
     flex: 1,
-    backgroundColor: C.bg,
+    backgroundColor: getThemeC(bmMode).bg,
     justifyContent: 'center',
     alignItems: 'center',
     gap: 16,
@@ -458,35 +466,35 @@ const styles = StyleSheet.create({
     marginTop: 14,
   },
   back: {
-    color: C.red,
+    color: getThemeC(bmMode).red,
     fontSize: 15,
     marginBottom: 24,
     fontWeight: '600',
   },
   title: {
-    color: C.white,
+    color: getThemeC(bmMode).white,
     fontSize: 27,
     fontWeight: '800',
   },
   subtitle: {
-    color: C.muted,
+    color: getThemeC(bmMode).muted,
     fontSize: 14,
     marginTop: 8,
   },
   count: {
-    color: C.green,
+    color: getThemeC(bmMode).green,
     fontSize: 13,
     marginTop: 10,
   },
   label: {
-    color: C.muted,
+    color: getThemeC(bmMode).muted,
     fontSize: 11,
     fontWeight: '700',
     marginBottom: 10,
     letterSpacing: 1,
   },
   card: {
-    backgroundColor: C.card,
+    backgroundColor: getThemeC(bmMode).card,
     padding: 18,
     borderRadius: 12,
     marginBottom: 10,
@@ -496,21 +504,21 @@ const styles = StyleSheet.create({
   },
   selectedCard: {
     borderWidth: 1.5,
-    borderColor: C.red,
+    borderColor: getThemeC(bmMode).red,
   },
   cardTitle: {
-    color: C.white,
+    color: getThemeC(bmMode).white,
     fontSize: 16,
     fontWeight: '700',
   },
   check: {
-    color: C.red,
+    color: getThemeC(bmMode).red,
     fontSize: 22,
     marginLeft: 12,
   },
   input: {
-    backgroundColor: C.card,
-    color: C.white,
+    backgroundColor: getThemeC(bmMode).card,
+    color: getThemeC(bmMode).white,
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 14,
@@ -518,7 +526,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   product: {
-    backgroundColor: C.card,
+    backgroundColor: getThemeC(bmMode).card,
     borderRadius: 10,
     padding: 14,
     marginBottom: 8,
@@ -526,31 +534,31 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   productName: {
-    color: C.white,
+    color: getThemeC(bmMode).white,
     fontSize: 14,
     fontWeight: '600',
   },
   productInfo: {
-    color: C.muted,
+    color: getThemeC(bmMode).muted,
     fontSize: 12,
     marginTop: 5,
   },
   editor: {
-    backgroundColor: '#303035',
+    backgroundColor: (bmMode === 'light' ? '#F5F5F5' : '#303035'),
     borderRadius: 14,
     padding: 16,
     marginTop: 14,
     gap: 8,
   },
   sectionTitle: {
-    color: C.white,
+    color: getThemeC(bmMode).white,
     fontSize: 19,
     fontWeight: '800',
     marginTop: 28,
     marginBottom: 14,
   },
   cartItem: {
-    backgroundColor: C.card,
+    backgroundColor: getThemeC(bmMode).card,
     borderRadius: 10,
     padding: 15,
     marginBottom: 8,
@@ -558,13 +566,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   remove: {
-    color: '#FF8B8B',
+    color: (bmMode === 'light' ? '#B00020' : '#FF8B8B'),
     fontSize: 13,
     fontWeight: '700',
     marginLeft: 10,
   },
   button: {
-    backgroundColor: C.red,
+    backgroundColor: getThemeC(bmMode).red,
     borderRadius: 12,
     padding: 17,
     alignItems: 'center',
@@ -572,7 +580,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   buttonText: {
-    color: C.white,
+    color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '800',
   },
@@ -580,13 +588,16 @@ const styles = StyleSheet.create({
     opacity: 0.4,
   },
   muted: {
-    color: C.muted,
+    color: getThemeC(bmMode).muted,
     fontSize: 14,
     marginTop: 8,
   },
   error: {
-    color: '#FF8B8B',
+    color: (bmMode === 'light' ? '#B00020' : '#FF8B8B'),
     fontSize: 14,
     marginTop: 20,
   },
 });
+const themeCachestyles = { dark: makeThemestyles('dark'), light: makeThemestyles('light') };
+const getThemestyles = (mode: ThemeMode) => themeCachestyles[mode];
+

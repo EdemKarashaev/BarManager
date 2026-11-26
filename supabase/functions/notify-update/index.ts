@@ -144,9 +144,15 @@ Deno.serve(async (req: Request) => {
 
     // Проверка совместимости OTA
     if (mode === "release") {
-      query = query
-        .eq("runtime_version", runtimeVersion)
-        .eq("channel", channel);
+      if (email && body.allow_legacy_device === true) {
+        query = query.or(
+          `and(runtime_version.eq.${runtimeVersion},channel.eq.${channel}),and(runtime_version.is.null,channel.is.null)`
+        );
+      } else {
+        query = query
+          .eq("runtime_version", runtimeVersion)
+          .eq("channel", channel);
+      }
     }
 
     const { data: devices, error } =

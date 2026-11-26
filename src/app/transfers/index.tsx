@@ -1,3 +1,4 @@
+import { useAppTheme, type ThemeMode } from '@/providers/theme';
 
 import { supabase } from '@/lib/supabase';
 import { router, useFocusEffect } from 'expo-router';
@@ -30,15 +31,18 @@ type Location = {
   name: string;
 };
 
-const C = {
-  bg: '#151518',
-  card: '#242428',
-  red: '#CC0014',
-  white: '#FFFFFF',
-  muted: '#AAAAAA',
-  green: '#79D5A4',
-  border: '#39393E',
-};
+const makeThemeC = (bmMode: ThemeMode) => ({
+  bg: (bmMode === 'light' ? '#FFFFFF' : '#151518'),
+  card: (bmMode === 'light' ? '#F5F5F5' : '#242428'),
+  red: (bmMode === 'light' ? '#B00020' : '#CC0014'),
+  white: (bmMode === 'light' ? '#111111' : '#FFFFFF'),
+  muted: (bmMode === 'light' ? '#666666' : '#AAAAAA'),
+  green: (bmMode === 'light' ? '#187747' : '#79D5A4'),
+  border: (bmMode === 'light' ? '#DDDDDD' : '#39393E'),
+});
+const themeCacheC = { dark: makeThemeC('dark'), light: makeThemeC('light') };
+const getThemeC = (mode: ThemeMode) => themeCacheC[mode];
+
 
 const STATUS: Record<string, string> = {
   draft: 'Черновик',
@@ -50,6 +54,10 @@ const STATUS: Record<string, string> = {
 };
 
 export default function TransfersScreen() {
+  const { mode: bmMode } = useAppTheme();
+  const C = getThemeC(bmMode);
+  const styles = getThemestyles(bmMode);
+
   const [tab, setTab] = useState<Tab>('outgoing');
   const [transfers, setTransfers] = useState<Transfer[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
@@ -341,7 +349,7 @@ export default function TransfersScreen() {
                       onPress={() => confirmSend(transfer)}
                     >
                       {sendingId === transfer.id ? (
-                        <ActivityIndicator color="#FFFFFF" />
+                        <ActivityIndicator color={(bmMode === 'light' ? '#111111' : "#FFFFFF")} />
                       ) : (
                         <Text style={styles.buttonText}>
                           Отправить
@@ -358,44 +366,44 @@ export default function TransfersScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeThemestyles = (bmMode: ThemeMode) => StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: C.bg,
+    backgroundColor: getThemeC(bmMode).bg,
     padding: 20,
   },
   back: {
-    color: C.red,
+    color: getThemeC(bmMode).red,
     fontSize: 15,
     marginBottom: 24,
     fontWeight: '600',
   },
   title: {
-    color: C.white,
+    color: getThemeC(bmMode).white,
     fontSize: 28,
     fontWeight: '800',
   },
   subtitle: {
-    color: C.muted,
+    color: getThemeC(bmMode).muted,
     fontSize: 14,
     marginTop: 8,
     marginBottom: 20,
   },
   createButton: {
-    backgroundColor: C.red,
+    backgroundColor: getThemeC(bmMode).red,
     padding: 16,
     borderRadius: 12,
     alignItems: 'center',
     marginBottom: 20,
   },
   buttonText: {
-    color: C.white,
+    color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '800',
   },
   tabs: {
     flexDirection: 'row',
-    backgroundColor: C.card,
+    backgroundColor: getThemeC(bmMode).card,
     borderRadius: 12,
     padding: 4,
     marginBottom: 18,
@@ -407,15 +415,15 @@ const styles = StyleSheet.create({
     borderRadius: 9,
   },
   activeTab: {
-    backgroundColor: '#404046',
+    backgroundColor: (bmMode === 'light' ? '#F5F5F5' : '#404046'),
   },
   tabText: {
-    color: C.muted,
+    color: getThemeC(bmMode).muted,
     fontSize: 12,
     fontWeight: '600',
   },
   activeTabText: {
-    color: C.white,
+    color: getThemeC(bmMode).white,
   },
   scroll: {
     flex: 1,
@@ -424,25 +432,25 @@ const styles = StyleSheet.create({
     paddingBottom: 30,
   },
   card: {
-    backgroundColor: C.card,
+    backgroundColor: getThemeC(bmMode).card,
     padding: 17,
     borderRadius: 14,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: C.border,
+    borderColor: getThemeC(bmMode).border,
   },
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   route: {
-    color: C.white,
+    color: getThemeC(bmMode).white,
     fontSize: 16,
     fontWeight: '700',
     flex: 1,
   },
   date: {
-    color: C.muted,
+    color: getThemeC(bmMode).muted,
     fontSize: 12,
     marginTop: 10,
   },
@@ -450,15 +458,15 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   status: {
-    color: '#F1C47B',
+    color: (bmMode === 'light' ? '#B00020' : '#F1C47B'),
     fontSize: 13,
     fontWeight: '700',
   },
   completed: {
-    color: C.green,
+    color: getThemeC(bmMode).green,
   },
   sendButton: {
-    backgroundColor: C.red,
+    backgroundColor: getThemeC(bmMode).red,
     padding: 14,
     borderRadius: 10,
     alignItems: 'center',
@@ -474,25 +482,28 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   muted: {
-    color: C.muted,
+    color: getThemeC(bmMode).muted,
     fontSize: 14,
   },
   error: {
-    color: '#FF8B8B',
+    color: (bmMode === 'light' ? '#B00020' : '#FF8B8B'),
     fontSize: 14,
     textAlign: 'center',
   },
   retry: {
-    color: C.red,
+    color: getThemeC(bmMode).red,
     fontSize: 15,
     fontWeight: '700',
     marginTop: 12,
   },
   empty: {
-    color: C.muted,
+    color: getThemeC(bmMode).muted,
     fontSize: 14,
     lineHeight: 22,
     marginTop: 20,
     textAlign: 'center',
   },
 });
+const themeCachestyles = { dark: makeThemestyles('dark'), light: makeThemestyles('light') };
+const getThemestyles = (mode: ThemeMode) => themeCachestyles[mode];
+

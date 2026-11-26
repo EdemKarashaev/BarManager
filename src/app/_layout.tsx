@@ -1,3 +1,5 @@
+import { useStaffDevice } from '@/lib/staff-device';
+import { AppThemeProvider, useAppTheme } from '@/providers/theme';
 
 import { updatesBlocked } from '@/lib/update-guard';
 import { AuthProvider, useAuth } from '@/providers/auth';
@@ -16,8 +18,15 @@ const RELEASE_CHANNEL: string =
 void SplashScreen.preventAutoHideAsync().catch(() => {});
 
 function Routes() {
+  const { mode, colors } = useAppTheme();
   const { session, staff, loading, error, retry, signOut, offline } = useAuth();
   const [logoutError, setLogoutError] = useState('');
+
+  useStaffDevice(
+    session?.user.id ?? null,
+    !!session && !!staff && !loading && !offline
+  );
+
 
   useEffect(() => {
     void SplashScreen.hideAsync().catch(() => {});
@@ -25,24 +34,24 @@ function Routes() {
 
   if (loading || (session && !staff)) {
     return (
-      <View style={{ flex: 1, backgroundColor: '#151518', alignItems: 'center', justifyContent: 'center', padding: 28, gap: 20 }}>
+      <View style={{ flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center', padding: 28, gap: 20 }}>
         {loading ? (
           <View style={{ alignItems: 'center', gap: 16 }}>
-            <Text style={{ color: '#C7A56B', fontSize: 25, fontWeight: '800', letterSpacing: 3 }}>
+            <Text style={{ color: colors.accent, fontSize: 25, fontWeight: '800', letterSpacing: 3 }}>
               BAR MANAGER
             </Text>
-            <ActivityIndicator color="#C7A56B" size="large" />
-            <Text style={{ color: '#eee' }}>Загружаем профиль…</Text>
-            <Text style={{ color: '#888', fontSize: 12 }}>
+            <ActivityIndicator color={colors.accent} size="large" />
+            <Text style={{ color: mode === 'dark' ? '#eee' : colors.text }}>Загружаем профиль…</Text>
+            <Text style={{ color: mode === 'dark' ? '#888' : colors.muted, fontSize: 12 }}>
               Версия {APP_VERSION} · {RELEASE_CHANNEL}
             </Text>
           </View>
         ) : (
           <View style={{ alignItems: 'center', gap: 16 }}>
-            <Text style={{ color: '#C7A56B', fontSize: 23, fontWeight: '800', letterSpacing: 2 }}>
+            <Text style={{ color: colors.accent, fontSize: 23, fontWeight: '800', letterSpacing: 2 }}>
               BAR MANAGER
             </Text>
-            <Text style={{ color: '#eee', textAlign: 'center' }}>
+            <Text style={{ color: mode === 'dark' ? '#eee' : colors.text, textAlign: 'center' }}>
               {error || 'Не удалось загрузить профиль сотрудника.'}
             </Text>
             <Pressable
@@ -56,9 +65,9 @@ function Routes() {
                   )
                 );
               }}
-              style={{ backgroundColor: '#C7A56B', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 10 }}
+              style={{ backgroundColor: colors.accent, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 10 }}
             >
-              <Text style={{ color: '#151518', fontWeight: '700' }}>Повторить</Text>
+              <Text style={{ color: mode === 'dark' ? '#151518' : colors.onPrimary, fontWeight: '700' }}>Повторить</Text>
             </Pressable>
             <Pressable
               onPress={() => {
@@ -73,14 +82,14 @@ function Routes() {
               }}
               style={{ paddingHorizontal: 24, paddingVertical: 12 }}
             >
-              <Text style={{ color: '#eee' }}>Выйти из аккаунта</Text>
+              <Text style={{ color: mode === 'dark' ? '#eee' : colors.text }}>Выйти из аккаунта</Text>
             </Pressable>
             {!!logoutError && (
-              <Text style={{ color: '#e76b70', textAlign: 'center' }}>
+              <Text style={{ color: mode === 'dark' ? '#e76b70' : colors.error, textAlign: 'center' }}>
                 {logoutError}
               </Text>
             )}
-            <Text style={{ color: '#888', fontSize: 12 }}>
+            <Text style={{ color: mode === 'dark' ? '#888' : colors.muted, fontSize: 12 }}>
               Версия {APP_VERSION} · {RELEASE_CHANNEL}
             </Text>
           </View>
@@ -90,7 +99,7 @@ function Routes() {
   }
 
   return (
-    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#151518' } }}>
+    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }}>
       <Stack.Protected guard={!session || !staff}>
         <Stack.Screen name="index" />
       </Stack.Protected>
@@ -117,6 +126,7 @@ function Routes() {
 }
 
 function WebUpdateNotice() {
+  const { mode, colors } = useAppTheme();
   const [available, setAvailable] = useState('');
   const [dismissed, setDismissed] = useState('');
   const [message, setMessage] = useState('');
@@ -220,23 +230,23 @@ function WebUpdateNotice() {
   return (
     <SafeAreaView
       edges={['top']}
-      style={{ backgroundColor: '#252529' }}
+      style={{ backgroundColor: colors.surface }}
     >
       <View style={{
         padding: 10,
         gap: 6,
         borderBottomWidth: 1,
-        borderBottomColor: '#C7A56B',
+        borderBottomColor: colors.accent,
       }}>
         <Text style={{
-          color: '#C7A56B',
+          color: colors.accent,
           fontWeight: '700',
           fontSize: 15,
         }}>
           Доступно обновление
         </Text>
 
-        <Text style={{ color: '#eee', fontSize: 12 }}>
+        <Text style={{ color: mode === 'dark' ? '#eee' : colors.text, fontSize: 12 }}>
           {message || 'Перед обновлением сохраните текущий заказ.'}
         </Text>
 
@@ -250,12 +260,12 @@ function WebUpdateNotice() {
               flex: 1,
               padding: 9,
               borderWidth: 1,
-              borderColor: '#66563C',
+              borderColor: mode === 'dark' ? '#66563C' : colors.border,
               borderRadius: 8,
               alignItems: 'center',
             }}
           >
-            <Text style={{ color: '#eee' }}>
+            <Text style={{ color: mode === 'dark' ? '#eee' : colors.text }}>
               Позже
             </Text>
           </Pressable>
@@ -265,13 +275,13 @@ function WebUpdateNotice() {
             style={{
               flex: 1,
               padding: 9,
-              backgroundColor: '#C7A56B',
+              backgroundColor: colors.accent,
               borderRadius: 8,
               alignItems: 'center',
             }}
           >
             <Text style={{
-              color: '#151518',
+              color: mode === 'dark' ? '#151518' : colors.onPrimary,
               fontWeight: '700',
             }}>
               Обновить
@@ -285,6 +295,7 @@ function WebUpdateNotice() {
 
 export default function RootLayout() {
   return (
+    <AppThemeProvider>
     <SafeAreaProvider>
       <AuthProvider>
         <UpdateProvider>
@@ -295,5 +306,6 @@ export default function RootLayout() {
         </UpdateProvider>
       </AuthProvider>
     </SafeAreaProvider>
+    </AppThemeProvider>
   );
 }

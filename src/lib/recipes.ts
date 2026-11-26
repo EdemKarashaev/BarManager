@@ -1,6 +1,6 @@
 import { supabase } from './supabase';
 import type { Recipe, RecipeStep } from './recipe-model';
-const columns = `id,name,description,status,admin_only,recipe_type,serving_notes,preparation_method,
+const columns = `source_sheet,id,name,description,status,admin_only,archived_at,revision,recipe_type,serving_notes,preparation_method,
  category:categories(name),
  variants:recipe_variants(id,name,yield_amount,yield_unit,sort_order,
  items:recipe_items(id,quantity,unit,notes,sort_order,

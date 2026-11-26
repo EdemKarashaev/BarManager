@@ -1,12 +1,14 @@
+import { useAppTheme } from '@/providers/theme';
 import { usePreventRemove } from "expo-router";
-import { Alert } from "react-native";
+import { mergeOrderQuantities } from "@/lib/order-merge";
+import { Modal } from "react-native";
 import { blockUpdates } from '@/lib/update-guard';
 /* eslint-disable react-hooks/set-state-in-effect -- Reset remote data immediately when account or reporting period changes; stale data must not remain editable. */
 import {
   emptyFilters,
   OButton,
   OrderFilters,
-  os,
+  getThemeos,
   type Filters,
 } from "@/components/order-ui";
 import { OrdersAdmin } from "@/components/orders-admin";
@@ -61,6 +63,9 @@ type ProductRowProps = {
 };
 
 const ProductRow = memo(function ProductRow({ product: p, supplierName, quantity, editable, busy, onChange, onStep }: ProductRowProps) {
+  const { mode: bmMode } = useAppTheme();
+  const os = getThemeos(bmMode);
+
   return (
     <View style={[os.card, { padding: 9, marginBottom: 5, gap: 3 }]}>
       <Text style={[os.heading, { fontSize: 14 }]}>{p.name}</Text>
@@ -68,20 +73,20 @@ const ProductRow = memo(function ProductRow({ product: p, supplierName, quantity
       <View style={[os.row, { gap: 8 }]}>
         <Text style={[os.text, { flex: 1, fontSize: 13 }]}>{p.price === null ? 'Цена не задана' : `${p.price} ₽`}</Text>
         <Text style={[os.muted, { fontSize: 12 }]}>{lineAmount(p.price, quantity || '0') ?? '—'} ₽</Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#5d5358', borderRadius: 7, overflow: 'hidden' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: (bmMode === 'light' ? '#DDDDDD' : '#5d5358'), borderRadius: 7, overflow: 'hidden' }}>
           <Pressable accessibilityRole="button" accessibilityLabel={`Уменьшить количество: ${p.name}`}
             disabled={!editable || busy} onPress={() => onStep(p.id, -1)}
-            style={{ width: 32, height: 34, justifyContent: 'center', alignItems: 'center', backgroundColor: '#303035' }}>
-            <Text style={{ color: '#fff', fontSize: 21 }}>−</Text>
+            style={{ width: 32, height: 34, justifyContent: 'center', alignItems: 'center', backgroundColor: (bmMode === 'light' ? '#F5F5F5' : '#303035') }}>
+            <Text style={{ color: (bmMode === 'light' ? '#111111' : '#fff'), fontSize: 21 }}>−</Text>
           </Pressable>
           <TextInput accessibilityLabel={`Количество: ${p.name}`} editable={editable && !busy}
             keyboardType="decimal-pad" maxLength={12} selectTextOnFocus placeholder="0"
-            placeholderTextColor="#aaa" value={quantity} onChangeText={(q) => onChange(p.id, q)}
-            style={{ width: 43, height: 34, padding: 0, color: '#fff', textAlign: 'center', fontSize: 14 }} />
+            placeholderTextColor={(bmMode === 'light' ? '#666666' : "#aaa")} value={quantity} onChangeText={(q) => onChange(p.id, q)}
+            style={{ width: 43, height: 34, padding: 0, color: (bmMode === 'light' ? '#111111' : '#fff'), textAlign: 'center', fontSize: 14 }} />
           <Pressable accessibilityRole="button" accessibilityLabel={`Увеличить количество: ${p.name}`}
             disabled={!editable || busy} onPress={() => onStep(p.id, 1)}
-            style={{ width: 32, height: 34, justifyContent: 'center', alignItems: 'center', backgroundColor: '#75444f' }}>
-            <Text style={{ color: '#fff', fontSize: 21 }}>+</Text>
+            style={{ width: 32, height: 34, justifyContent: 'center', alignItems: 'center', backgroundColor: (bmMode === 'light' ? '#FCE7E9' : '#75444f') }}>
+            <Text style={{ color: (bmMode === 'light' ? '#111111' : '#fff'), fontSize: 21 }}>+</Text>
           </Pressable>
         </View>
       </View>
@@ -90,6 +95,9 @@ const ProductRow = memo(function ProductRow({ product: p, supplierName, quantity
 });
 
 export default function OrdersScreen() {
+  const { mode: bmMode } = useAppTheme();
+  const os = getThemeos(bmMode);
+
   const { session } = useAuth();
   useEffect(() => blockUpdates(), []);
   const [week, setWeek] = useState(monday());
@@ -108,28 +116,45 @@ export default function OrdersScreen() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [dirty, setDirty] = useState(false);
+  const [exitOpen, setExitOpen] = useState(false);
+  const [exitAfterSave, setExitAfterSave] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [commentOpen, setCommentOpen] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const [reload, setReload] = useState(0);
+  const [conflict, setConflict] = useState<{
+    order: Order;
+    remote: Record<string, string>;
+    local: Record<string, string>;
+    merged: Record<string, string>;
+    ids: string[];
+  } | null>(null);
+  const [choices, setChoices] = useState<
+    Record<string, "local" | "remote">
+  >({});
   const live = useRef(0);
   const working = useRef(false);
   const localWrites = useRef(Promise.resolve());
   const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const quantitiesRef = useRef<Record<string, string>>({});
   const updateBlocked = useRef(false);
+  const baseQuantitiesRef = useRef<Record<string, string>>({});
 
-  usePreventRemove(dirty || busy, () => {
-    const message = working.current
-      ? "Дождитесь завершения операции."
-      : "Сохраните заказ перед выходом из раздела.";
-
-    setNotice(message);
-
-    if (Platform.OS !== "web") {
-      Alert.alert("Защита заказа", message);
+  usePreventRemove(dirty || busy || loading, () => {
+    if (working.current || busy || loading) {
+      setNotice("Дождитесь завершения операции.");
+      return;
     }
+    setExitOpen(true);
   });
+
+  useEffect(() => {
+    if (exitAfterSave && !dirty && !busy && !loading && !conflict) {
+      setExitAfterSave(false);
+      router.dismissTo("/home");
+    }
+  }, [exitAfterSave, dirty, busy, loading, conflict]);
+
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return;
     const guard = (event: Event) => {
@@ -160,6 +185,9 @@ export default function OrdersScreen() {
     if (draftTimer.current) clearTimeout(draftTimer.current);
     draftTimer.current = null;
     quantitiesRef.current = {};
+    baseQuantitiesRef.current = {};
+    setConflict(null);
+    setChoices({});
     setQuantities({});
     updateBlocked.current = false;
     setDirty(false);
@@ -184,6 +212,7 @@ export default function OrdersScreen() {
         );
         setOrder(result.order);
         setOrderItems(result.items);
+        baseQuantitiesRef.current = { ...q };
         quantitiesRef.current = q;
         setQuantities(q);
         try {
@@ -196,6 +225,7 @@ export default function OrdersScreen() {
             const local = JSON.parse(raw) as {
               orderId: string;
               revision: number;
+              baseQuantities?: Record<string, string>;
               quantities: Record<string, string>;
             };
             if (
@@ -215,9 +245,79 @@ export default function OrdersScreen() {
                 "Восстановлены несохранённые изменения на этом устройстве.",
               );
             } else {
-              setNotice(
-                "На сервере более новая версия заказа. Загружена она; старые локальные изменения не применены.",
-              );
+              const validQuantities = (value: unknown):
+                value is Record<string, string> =>
+                !!value &&
+                typeof value === "object" &&
+                !Array.isArray(value) &&
+                Object.values(value).every(
+                  (v) => typeof v === "string" && v.length <= 12
+                );
+
+              if (
+                local.orderId === result.order.id &&
+                validQuantities(local.baseQuantities) &&
+                validQuantities(local.quantities)
+              ) {
+                const merged = mergeOrderQuantities(
+                  local.baseQuantities,
+                  local.quantities,
+                  q
+                );
+
+                if (merged.conflicts.length === 0) {
+                  await AsyncStorage.setItem(
+                    draftKey,
+                    JSON.stringify({
+                      orderId: result.order.id,
+                      revision: result.order.revision,
+                      baseQuantities: q,
+                      quantities: merged.quantities,
+                    })
+                  );
+
+                  if (!active) return;
+
+                  baseQuantitiesRef.current = { ...q };
+                  quantitiesRef.current = merged.quantities;
+                  setQuantities(merged.quantities);
+                  updateBlocked.current = true;
+                  setDirty(true);
+                  setNotice(
+                    "Черновик восстановлен. Изменения администратора добавлены."
+                  );
+                } else {
+                  baseQuantitiesRef.current = {
+                    ...local.baseQuantities
+                  };
+                  quantitiesRef.current = local.quantities;
+                  setQuantities(local.quantities);
+                  updateBlocked.current = true;
+                  setDirty(true);
+
+                  setConflict({
+                    order: result.order,
+                    remote: q,
+                    local: local.quantities,
+                    merged: merged.quantities,
+                    ids: merged.conflicts,
+                  });
+                  setChoices({});
+                  setNotice("Выберите количество для спорных товаров.");
+                }
+              } else {
+                await AsyncStorage.setItem(
+                  draftKey + ":recovery",
+                  raw
+                );
+
+                if (!active) return;
+
+                setNotice(
+                  "Старый черновик сохранён в резервной копии. " +
+                  "Загружена актуальная версия заказа."
+                );
+              }
             }
           }
         } catch {
@@ -242,7 +342,8 @@ export default function OrdersScreen() {
     };
   }, [week, session?.user.id, reload, draftKey]);
   const editable =
-    !!order && ["draft", "revision_requested"].includes(order.status);
+    !!order && !conflict &&
+    ["draft", "revision_requested"].includes(order.status);
   const currentProducts = useMemo(() => catalog.products
     .filter((p) => p.is_active)
     .map((p) => ({
@@ -343,7 +444,7 @@ export default function OrdersScreen() {
       Number(quantities[id].replace(",", ".")) > 0,
   );
   const change = useCallback((id: string, q: string) => {
-    if (working.current) return;
+    if (working.current || conflict) return;
     const next = { ...quantitiesRef.current, [id]: q };
     quantitiesRef.current = next;
     setQuantities(next);
@@ -354,6 +455,7 @@ export default function OrdersScreen() {
     const data = JSON.stringify({
       orderId: order?.id,
       revision: order?.revision,
+      baseQuantities: { ...baseQuantitiesRef.current },
       quantities: next,
     });
 
@@ -362,7 +464,7 @@ export default function OrdersScreen() {
       .catch(() => {
         setNotice('Не удалось сохранить локальную копию. Сохраните черновик на сервер.');
       });
-  }, [order?.id, order?.revision, draftKey]);
+  }, [order?.id, order?.revision, draftKey, conflict]);
 
   const stepQuantity = useCallback((id: string, direction: -1 | 1) => {
     if (!editable || busy || working.current) return;
@@ -376,22 +478,76 @@ export default function OrdersScreen() {
     if (draftTimer.current) {
       clearTimeout(draftTimer.current);
       draftTimer.current = null;
-      const data = JSON.stringify({ orderId: order?.id, revision: order?.revision, quantities: quantitiesRef.current });
+      const data = JSON.stringify({ orderId: order?.id, revision: order?.revision,
+        baseQuantities: { ...baseQuantitiesRef.current },
+        quantities: quantitiesRef.current });
       localWrites.current = localWrites.current.then(() => AsyncStorage.setItem(draftKey, data));
     }
     await localWrites.current;
   }
 
-  async function save(submit = false, replacement?: Record<string, string>) {
-    if (!order || working.current) return;
+  async function save(
+    submit = false,
+    replacement?: Record<string, string>,
+    leaveAfterSave = false
+  ) {
+    if (!order || working.current || conflict) return;
     working.current = true;
     setBusy(true);
     setError("");
     const generation = live.current;
     try {
       await flushDraft();
+
+      const remote = await ordersRpc<{
+        order: Order;
+        items: OrderItem[];
+      }>("bm_orders_open", { p_week: week });
+
+      if (generation !== live.current) return;
+
+      if (
+        remote.order.id !== order.id ||
+        !["draft", "revision_requested"].includes(remote.order.status)
+      ) {
+        throw Error("Статус заказа изменился. Проверьте актуальный заказ.");
+      }
+
+      const remoteQuantities = Object.fromEntries(
+        remote.items.map((i) => [i.product_id, i.quantity])
+      );
+
+      if (replacement && remote.order.revision !== order.revision) {
+        throw Error(
+          "Заказ изменён другим сотрудником. Очистка отменена."
+        );
+      }
+
+      const merged = mergeOrderQuantities(
+        baseQuantitiesRef.current,
+        replacement ?? quantitiesRef.current,
+        remoteQuantities
+      );
+
+      if (merged.conflicts.length) {
+        setConflict({
+          order: remote.order,
+          remote: remoteQuantities,
+          local: { ...quantitiesRef.current },
+          merged: merged.quantities,
+          ids: merged.conflicts,
+        });
+        setChoices({});
+        updateBlocked.current = true;
+        setDirty(true);
+        setNotice("Выберите количество для спорных товаров.");
+        return;
+      }
+
+      const nextQuantities = merged.quantities;
       const items = [];
-      for (const [id, input] of Object.entries(replacement ?? quantitiesRef.current)) {
+
+      for (const [id, input] of Object.entries(nextQuantities)) {
         if (!input.trim()) continue;
         const q = decimalUnits(input, 3);
         if (q === null)
@@ -417,17 +573,17 @@ export default function OrdersScreen() {
         catalogChanged: boolean;
       }>("bm_orders_save", {
         p_order: order.id,
-        p_revision: order.revision,
+        p_revision: remote.order.revision,
         p_items: items,
       });
       if (generation !== live.current) return;
-      setOrder({ ...order, revision: result.revision });
+      setOrder({ ...remote.order, revision: result.revision });
+      baseQuantitiesRef.current = { ...nextQuantities };
+      quantitiesRef.current = nextQuantities;
+      setQuantities(nextQuantities);
       updateBlocked.current = false;
     setDirty(false);
-      if (replacement) {
-        quantitiesRef.current = replacement;
-        setQuantities(replacement);
-      }
+      
       await flushDraft();
       await AsyncStorage.removeItem(draftKey).catch(() => {});
       if (submit && result.catalogChanged) {
@@ -450,7 +606,11 @@ export default function OrdersScreen() {
           setReload((n) => n + 1);
         }
       } else {
-        setCatalog(await ordersRpc<Catalog>("bm_orders_catalog"));
+        if (leaveAfterSave) {
+          setExitAfterSave(true);
+        } else {
+          setCatalog(await ordersRpc<Catalog>("bm_orders_catalog"));
+        }
         setNotice(replacement ? "Заказ очищен и сохранён на сервере." : "Черновик сохранён на сервере.");
       }
     } catch (e) {
@@ -482,6 +642,59 @@ export default function OrdersScreen() {
     }
   }
 
+  async function resolveConflicts() {
+    if (!conflict || working.current ||
+        conflict.ids.some((id) => !choices[id])) return;
+
+    working.current = true;
+    setBusy(true);
+    const generation = live.current;
+
+    try {
+      const next = { ...conflict.merged };
+
+      for (const id of conflict.ids) {
+        const source = choices[id] === "local"
+          ? conflict.local
+          : conflict.remote;
+
+        next[id] = source[id] ?? "0";
+      }
+
+      await localWrites.current;
+
+      await AsyncStorage.setItem(
+        draftKey,
+        JSON.stringify({
+          orderId: conflict.order.id,
+          revision: conflict.order.revision,
+          baseQuantities: conflict.remote,
+          quantities: next,
+        })
+      );
+
+      if (generation !== live.current) return;
+
+      baseQuantitiesRef.current = { ...conflict.remote };
+      quantitiesRef.current = next;
+      setQuantities(next);
+      setOrder(conflict.order);
+      setConflict(null);
+      setChoices({});
+      setError("");
+      setDirty(true);
+      updateBlocked.current = true;
+      setNotice(
+        "Изменения объединены. Проверьте заказ и нажмите «Сохранить»."
+      );
+    } catch (e) {
+      if (generation === live.current) setError(orderError(e));
+    } finally {
+      working.current = false;
+      if (generation === live.current) setBusy(false);
+    }
+  }
+
   async function clearOrder() {
     setConfirmClear(false);
     if (!editable || busy || !order) return;
@@ -491,10 +704,70 @@ export default function OrdersScreen() {
 
   return (
     <SafeAreaView style={os.screen}>
+      <Modal
+        visible={exitOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!busy) setExitOpen(false);
+        }}
+      >
+        <View style={{
+          flex: 1,
+          justifyContent: "center",
+          alignItems: "center",
+          backgroundColor: "rgba(0,0,0,0.75)",
+          padding: 20,
+        }}>
+          <View style={{
+            width: "100%",
+            maxWidth: 420,
+            backgroundColor: (bmMode === 'light' ? '#F5F5F5' : "#202226"),
+            borderRadius: 14,
+            borderWidth: 1,
+            borderColor: (bmMode === 'light' ? '#DDDDDD' : "#45454A"),
+            padding: 20,
+            gap: 14,
+          }}>
+            <Text style={[os.heading, { fontSize: 21 }]}>
+              Сохранить заказ?
+            </Text>
+
+            <Text style={os.muted}>
+              {conflict
+                ? "Сначала разрешите конфликт количества товаров."
+                : "В заказе есть несохранённые изменения. Сохраните черновик перед переходом на главную."}
+            </Text>
+
+            <OButton
+              title="Сохранить и выйти"
+              disabled={busy || !!conflict || !order}
+              onPress={() => {
+                if (working.current || conflict || !order) return;
+                setExitOpen(false);
+                void save(false, undefined, true);
+              }}
+            />
+
+            <OButton
+              title="Продолжить заполнение"
+              disabled={busy}
+              onPress={() => setExitOpen(false)}
+            />
+          </View>
+        </View>
+      </Modal>
        <View style={{ paddingHorizontal: 10, paddingTop: 4, paddingBottom: 5, gap: 5 }}>
          <View style={[os.row, { justifyContent: "space-between" }]}>
-           <Pressable onPress={() => router.back()} disabled={busy || dirty} style={{ paddingVertical: 5, paddingHorizontal: 8, borderRadius: 7, backgroundColor: "#75444f" }}>
-             <Text style={{ color: "#fff", fontSize: 13 }}>‹ Главная</Text>
+           <Pressable onPress={() => {
+               if (working.current || busy || loading) return;
+               if (dirty || updateBlocked.current) {
+                 setExitOpen(true);
+               } else {
+                 router.dismissTo("/home");
+               }
+             }} disabled={busy || loading || exitAfterSave} style={{ paddingVertical: 5, paddingHorizontal: 8, borderRadius: 7, backgroundColor: (bmMode === 'light' ? '#FCE7E9' : "#75444f") }}>
+             <Text style={{ color: (bmMode === 'light' ? '#111111' : "#fff"), fontSize: 13 }}>‹ Главная</Text>
            </Pressable>
            <Text style={[os.title, { fontSize: 20 }]}>Заказы</Text>
            <View style={{ width: 65 }} />
@@ -511,18 +784,18 @@ export default function OrdersScreen() {
          {!!error && (
            <View>
              <Text accessibilityRole="alert" style={os.error}>{error}</Text>
-             <OButton title="Загрузить серверную версию вместо текущих изменений" disabled={busy}
+             {!conflict && <OButton title="Загрузить серверную версию вместо текущих изменений" disabled={busy}
                onPress={() => {
                  void localWrites.current.then(() => AsyncStorage.removeItem(draftKey))
                    .then(() => setReload((n) => n + 1))
                    .catch((e) => setError(orderError(e)));
-               }} />
+               }} />}
            </View>
          )}
          {!!notice && <Text style={[os.muted, { fontSize: 11 }]}>{notice}</Text>}
        </View>
       {loading ? (
-        <ActivityIndicator color="#EE9EA4" />
+        <ActivityIndicator color={(bmMode === 'light' ? '#B00020' : "#EE9EA4")} />
       ) : !context ? (
         <View style={os.content}>
           <OButton title="Повторить" onPress={() => setReload((n) => n + 1)} />
@@ -534,6 +807,69 @@ export default function OrdersScreen() {
           setCatalog={setCatalog}
           week={week}
         />
+      ) : conflict ? (
+        <ScrollView contentContainerStyle={{ padding: 12, gap: 10 }}>
+          <Text style={[os.heading, { fontSize: 20 }]}>
+            Заказ изменён
+          </Text>
+          <Text style={os.muted}>
+            Выберите количество для каждой спорной позиции.
+            Остальные изменения будут объединены автоматически.
+          </Text>
+
+          {conflict.ids.map((id) => (
+            <View key={id} style={[os.card, { gap: 10 }]}>
+              <Text style={os.heading}>
+                {catalog.products.find((p) => p.id === id)?.name ?? id}
+              </Text>
+
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                {(["local", "remote"] as const).map((side) => (
+                  <Pressable
+                    key={side}
+                    disabled={busy}
+                    accessibilityRole="radio"
+                    accessibilityState={{
+                      checked: choices[id] === side
+                    }}
+                    onPress={() => setChoices((prev) => ({
+                      ...prev, [id]: side
+                    }))}
+                    style={{
+                      flex: 1,
+                      padding: 12,
+                      borderRadius: 8,
+                      borderWidth: 2,
+                      borderColor: choices[id] === side
+                        ? "#C7A56B" : "#45454A",
+                      backgroundColor: (bmMode === 'light' ? '#F5F5F5' : "#292B2E"),
+                    }}
+                  >
+                    <Text style={os.muted}>
+                      {side === "local" ? "Моё количество" : "На сервере"}
+                    </Text>
+                    <Text style={{
+                      color: choices[id] === side
+                        ? "#C7A56B" : "#FFFFFF",
+                      fontSize: 24,
+                      fontWeight: "700",
+                    }}>
+                      {(side === "local"
+                        ? conflict.local[id]
+                        : conflict.remote[id]) || "0"}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          ))}
+
+          <OButton
+            title="Применить выбранные количества"
+            disabled={busy || conflict.ids.some((id) => !choices[id])}
+            onPress={() => void resolveConflicts()}
+          />
+        </ScrollView>
       ) : !order ? (
         <View style={os.content}>
           <OButton
@@ -555,18 +891,18 @@ export default function OrdersScreen() {
                      {context.locations[0]?.name} · {orderStatus[order.status]}
                    </Text>
                    <Pressable disabled={!editable || busy} onPress={() => setConfirmClear(true)} style={{ padding: 5, opacity: editable && !busy ? 1 : 0.45 }}>
-                     <Text style={{ color: "#EE9EA4", fontSize: 12 }}>Очистить заказ</Text>
+                     <Text style={{ color: (bmMode === 'light' ? '#B00020' : "#EE9EA4"), fontSize: 12 }}>Очистить заказ</Text>
                    </Pressable>
                  </View>
                  {confirmClear && editable && (
-                   <View style={[os.card, { padding: 12, gap: 9, borderWidth: 1, borderColor: "#75444f" }]}>
+                   <View style={[os.card, { padding: 12, gap: 9, borderWidth: 1, borderColor: (bmMode === 'light' ? '#D99BA1' : "#75444f") }]}>
                      <Text style={os.heading}>Очистить заказ?</Text>
                      <Text style={os.muted}>Все количества товаров в заказе этого ресторана за выбранную неделю будут удалены. Действие нельзя отменить автоматически.</Text>
                      <View style={{ flexDirection: "row", gap: 8 }}>
-                       <Pressable onPress={() => setConfirmClear(false)} disabled={busy} style={{ flex: 1, padding: 10, backgroundColor: "#303035", borderRadius: 8, alignItems: "center" }}>
+                       <Pressable onPress={() => setConfirmClear(false)} disabled={busy} style={{ flex: 1, padding: 10, backgroundColor: (bmMode === 'light' ? '#F5F5F5' : "#303035"), borderRadius: 8, alignItems: "center" }}>
                          <Text style={os.text}>Отмена</Text>
                        </Pressable>
-                       <Pressable onPress={() => void clearOrder()} disabled={busy} style={{ flex: 1, padding: 10, backgroundColor: "#75444f", borderRadius: 8, alignItems: "center" }}>
+                       <Pressable onPress={() => void clearOrder()} disabled={busy} style={{ flex: 1, padding: 10, backgroundColor: (bmMode === 'light' ? '#FCE7E9' : "#75444f"), borderRadius: 8, alignItems: "center" }}>
                          <Text style={os.text}>Да, очистить</Text>
                        </Pressable>
                      </View>
@@ -600,10 +936,10 @@ export default function OrdersScreen() {
                          renderItem={({ item: entry }) => {
                if (entry.kind === 'section') {
                  return (
-                   <View style={{ backgroundColor: '#292B2E', borderLeftWidth: 3,
-                     borderLeftColor: '#C7A56B', paddingHorizontal: 12,
+                   <View style={{ backgroundColor: (bmMode === 'light' ? '#F5F5F5' : '#292B2E'), borderLeftWidth: 3,
+                     borderLeftColor: (bmMode === 'light' ? '#DDDDDD' : '#C7A56B'), paddingHorizontal: 12,
                      paddingVertical: 8, marginTop: 10, marginBottom: 4 }}>
-                     <Text style={{ color: '#C7A56B', fontWeight: '700', fontSize: 13 }}>
+                     <Text style={{ color: (bmMode === 'light' ? '#B00020' : '#C7A56B'), fontWeight: '700', fontSize: 13 }}>
                        {entry.title.toUpperCase()} · {entry.count} поз.
                      </Text>
                    </View>
@@ -636,12 +972,12 @@ export default function OrdersScreen() {
              {editable ? (
                <View style={{ flexDirection: "row", gap: 7 }}>
                  <Pressable disabled={busy} onPress={() => void save()}
-                   style={{ flex: 1, backgroundColor: "#75444f", paddingVertical: 10, borderRadius: 8, alignItems: "center" }}>
-                   <Text style={{ color: "#fff", fontSize: 12, fontWeight: "600" }}>{busy ? "Сохраняем…" : "Сохранить"}</Text>
+                   style={{ flex: 1, backgroundColor: (bmMode === 'light' ? '#FCE7E9' : "#75444f"), paddingVertical: 10, borderRadius: 8, alignItems: "center" }}>
+                   <Text style={{ color: (bmMode === 'light' ? '#111111' : "#fff"), fontSize: 12, fontWeight: "600" }}>{busy ? "Сохраняем…" : "Сохранить"}</Text>
                  </Pressable>
                  <Pressable disabled={busy || !check.canSubmit || unavailable} onPress={() => void save(true)}
                    style={{ flex: 1.5, backgroundColor: busy || !check.canSubmit || unavailable ? "#51494d" : "#75444f", paddingVertical: 10, borderRadius: 8, alignItems: "center" }}>
-                   <Text style={{ color: "#fff", fontSize: 12, fontWeight: "600" }}>Отправить администратору</Text>
+                   <Text style={{ color: (bmMode === 'light' ? '#111111' : "#fff"), fontSize: 12, fontWeight: "600" }}>Отправить администратору</Text>
                  </Pressable>
                </View>
              ) : (

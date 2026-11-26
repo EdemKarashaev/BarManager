@@ -47,3 +47,6 @@ example
 BarManager-web.zip
 # Local Android release history
 .release-android/
+backups/
+
+.theme-backup-*/

@@ -1,6 +1,8 @@
 // Web/iOS fallback; native Android implementation is resolved by Metro.
 
-export async function checkUpdate(): Promise<string | null> {
+import type { AvailableUpdate } from '@/lib/app-version';
+
+export async function checkUpdate(): Promise<AvailableUpdate | null> {
   return null;
 }
 

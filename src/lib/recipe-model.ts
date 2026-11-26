@@ -10,6 +10,8 @@ export type Recipe = {
 
   status: RecipeStatus;
   admin_only: boolean;
+  archived_at?: string | null;
+  revision?: number;
   recipe_type: string;
 
   serving_notes: string | null;
@@ -42,7 +44,7 @@ export function matchesRecipe(recipe: Recipe, query: string): boolean {
 }
 export function visibleRecipes(recipes: Recipe[], isAdmin: boolean): Recipe[] {
   // UI defence only. Supabase RLS remains the authority for read access.
-  return recipes.filter(recipe => isAdmin || recipe.admin_only === false);
+  return recipes.filter(recipe => isAdmin || (recipe.admin_only === false && !recipe.archived_at));
 }
 export function formatAmount(amount: number | null, unit: string | null): string {
   if (amount === null) return 'Не указано';

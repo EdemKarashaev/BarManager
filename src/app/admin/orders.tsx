@@ -1,3 +1,5 @@
+import { useAppTheme } from '@/providers/theme';
+import { OrderProductCreate } from "@/components/order-product-create";
 import { blockUpdates } from "@/lib/update-guard";
 /* eslint-disable react-hooks/set-state-in-effect -- Reset remote data immediately when account or reporting period changes; stale data must not remain editable. */
 
@@ -36,7 +38,7 @@ import {
 
   OrderFilters,
 
-  os,
+  getThemeos,
 
   type Filters,
 } from "../../components/order-ui";
@@ -72,9 +74,11 @@ function AdminQuantityCell({
   disabled,
 
   onSave,
+  mobile = false,
 
 }: {
 
+  mobile?: boolean;
   value: number;
 
   disabled: boolean;
@@ -82,6 +86,9 @@ function AdminQuantityCell({
   onSave: (quantity: number) => Promise<boolean>;
 
 }) {
+  const { mode: bmMode } = useAppTheme();
+  const os = getThemeos(bmMode);
+
 
   const [text, setText] = useState(String(value));
 
@@ -139,7 +146,10 @@ function AdminQuantityCell({
 
   return (
 
-    <View style={[os.cell, { padding: 3, justifyContent: "center" }]}>
+    <View style={mobile
+      ? { width: "100%", padding: 3, justifyContent: "center" }
+      : [os.cell, { padding: 3, justifyContent: "center" }]
+    }>
 
       <TextInput
 
@@ -161,7 +171,7 @@ function AdminQuantityCell({
 
         editable={!disabled && !saving}
 
-        style={{ color: disabled ? "#888" : "#fff", backgroundColor: "#292b30", borderColor: focused ? "#c7a56b" : "#505056", borderWidth: 1, borderRadius: 5, textAlign: "center", minHeight: 34, padding: 3 }}
+        style={{ color: disabled ? "#888" : "#fff", backgroundColor: (bmMode === 'light' ? '#F5F5F5' : "#292b30"), borderColor: focused ? "#c7a56b" : "#505056", borderWidth: 1, borderRadius: 5, textAlign: "center", minHeight: 34, padding: 3 }}
 
       />
 
@@ -194,6 +204,9 @@ function CatalogAmountCell({
   onSave: (amount: string | null) => Promise<boolean>;
 
 }) {
+  const { mode: bmMode } = useAppTheme();
+  const os = getThemeos(bmMode);
+
 
   const original = value ?? "";
 
@@ -275,11 +288,11 @@ function CatalogAmountCell({
 
         placeholder="Не задано"
 
-        placeholderTextColor="#888"
+        placeholderTextColor={(bmMode === 'light' ? '#666666' : "#888")}
 
         editable={!disabled && !saving}
 
-        style={{ color: "#fff", backgroundColor: "#292b30", borderColor: focused ? "#c7a56b" : "#505056", borderWidth: 1, borderRadius: 5, minHeight: 34, padding: 4, textAlign: "center" }}
+        style={{ color: (bmMode === 'light' ? '#111111' : "#fff"), backgroundColor: (bmMode === 'light' ? '#F5F5F5' : "#292b30"), borderColor: focused ? "#c7a56b" : "#505056", borderWidth: 1, borderRadius: 5, minHeight: 34, padding: 4, textAlign: "center" }}
 
       />
 
@@ -316,6 +329,8 @@ function SupplierDropdown({
   onChange: (supplierId: string | null) => Promise<boolean>;
 
 }) {
+  const { mode: bmMode } = useAppTheme();
+
 
   const [open, setOpen] = useState(false);
 
@@ -355,13 +370,13 @@ function SupplierDropdown({
 
         onPress={() => setOpen(true)}
 
-        style={{ minHeight: 38, borderWidth: 1, borderColor: "#505056", borderRadius: 6, backgroundColor: "#292b30", paddingHorizontal: 10, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 6 }}
+        style={{ minHeight: 38, borderWidth: 1, borderColor: (bmMode === 'light' ? '#DDDDDD' : "#505056"), borderRadius: 6, backgroundColor: (bmMode === 'light' ? '#F5F5F5' : "#292b30"), paddingHorizontal: 10, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 6 }}
 
       >
 
-        <Text numberOfLines={1} style={{ color: "#fff", flex: 1 }}>{currentName}</Text>
+        <Text numberOfLines={1} style={{ color: (bmMode === 'light' ? '#111111' : "#fff"), flex: 1 }}>{currentName}</Text>
 
-        <Text style={{ color: "#c7a56b" }}>▾</Text>
+        <Text style={{ color: (bmMode === 'light' ? '#B00020' : "#c7a56b") }}>▾</Text>
 
       </TouchableOpacity>
 
@@ -369,11 +384,11 @@ function SupplierDropdown({
 
         <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "rgba(0,0,0,0.7)", padding: 20 }}>
 
-          <View style={{ width: "100%", maxWidth: 440, maxHeight: "80%", backgroundColor: "#202226", borderColor: "#505056", borderWidth: 1, borderRadius: 12, padding: 16 }}>
+          <View style={{ width: "100%", maxWidth: 440, maxHeight: "80%", backgroundColor: (bmMode === 'light' ? '#F5F5F5' : "#202226"), borderColor: (bmMode === 'light' ? '#DDDDDD' : "#505056"), borderWidth: 1, borderRadius: 12, padding: 16 }}>
 
-            <Text style={{ color: "#fff", fontSize: 18, fontWeight: "700", marginBottom: 12 }}>Выбрать поставщика</Text>
+            <Text style={{ color: (bmMode === 'light' ? '#111111' : "#fff"), fontSize: 18, fontWeight: "700", marginBottom: 12 }}>Выбрать поставщика</Text>
 
-            <Text style={{ color: "#aaa", marginBottom: 10 }} numberOfLines={2}>{productName}</Text>
+            <Text style={{ color: (bmMode === 'light' ? '#666666' : "#aaa"), marginBottom: 10 }} numberOfLines={2}>{productName}</Text>
 
             <TextInput
 
@@ -385,9 +400,9 @@ function SupplierDropdown({
 
               placeholder="Поиск поставщика…"
 
-              placeholderTextColor="#999"
+              placeholderTextColor={(bmMode === 'light' ? '#666666' : "#999")}
 
-              style={{ color: "#fff", backgroundColor: "#303238", borderRadius: 7, padding: 10, marginBottom: 10 }}
+              style={{ color: (bmMode === 'light' ? '#111111' : "#fff"), backgroundColor: (bmMode === 'light' ? '#F5F5F5' : "#303238"), borderRadius: 7, padding: 10, marginBottom: 10 }}
 
             />
 
@@ -401,25 +416,25 @@ function SupplierDropdown({
 
                   onPress={() => void choose(option.id)}
 
-                  style={{ paddingVertical: 12, paddingHorizontal: 8, borderBottomWidth: 1, borderBottomColor: "#383a40", flexDirection: "row", justifyContent: "space-between" }}
+                  style={{ paddingVertical: 12, paddingHorizontal: 8, borderBottomWidth: 1, borderBottomColor: (bmMode === 'light' ? '#DDDDDD' : "#383a40"), flexDirection: "row", justifyContent: "space-between" }}
 
                 >
 
-                  <Text style={{ color: "#fff", flex: 1 }}>{option.name}</Text>
+                  <Text style={{ color: (bmMode === 'light' ? '#111111' : "#fff"), flex: 1 }}>{option.name}</Text>
 
-                  {(value ?? "") === option.id && <Text style={{ color: "#c7a56b" }}>✓</Text>}
+                  {(value ?? "") === option.id && <Text style={{ color: (bmMode === 'light' ? '#B00020' : "#c7a56b") }}>✓</Text>}
 
                 </TouchableOpacity>
 
               ))}
 
-              {!options.length && <Text style={{ color: "#aaa", padding: 12 }}>Поставщики не найдены</Text>}
+              {!options.length && <Text style={{ color: (bmMode === 'light' ? '#666666' : "#aaa"), padding: 12 }}>Поставщики не найдены</Text>}
 
             </ScrollView>
 
             <TouchableOpacity onPress={() => { setOpen(false); setSearch(""); }} style={{ padding: 12, marginTop: 12, alignItems: "center" }}>
 
-              <Text style={{ color: "#c7a56b", fontWeight: "600" }}>Отмена</Text>
+              <Text style={{ color: (bmMode === 'light' ? '#B00020' : "#c7a56b"), fontWeight: "600" }}>Отмена</Text>
 
             </TouchableOpacity>
 
@@ -458,6 +473,9 @@ export function OrdersAdmin({
   week: string;
 
 }) {
+  const { mode: bmMode } = useAppTheme();
+  const os = getThemeos(bmMode);
+
   useEffect(() => blockUpdates(), []);
 
 
@@ -525,11 +543,88 @@ export function OrdersAdmin({
 
   }, [week, reload]);
 
-  const rows = new Map<string, SummaryRow>();
+  const exportSummary = new Map<string, SummaryRow>();
 
   for (const o of orders.filter((o) =>
 
     ["submitted", "approved"].includes(o.status),
+
+  )) {
+
+    for (const it of o.items || []) {
+
+      const key = JSON.stringify([
+
+        it.product_id,
+
+        it.product_name_snapshot,
+
+        it.supplier_id_snapshot,
+
+        it.unit_price_snapshot,
+
+        it.unit_snapshot,
+
+        it.category_snapshot,
+
+      ]);
+
+      const row = exportSummary.get(key) || {
+
+        key,
+
+        productId: it.product_id,
+
+        name: it.product_name_snapshot,
+
+        supplier: it.supplier_name_snapshot || "Не указан",
+
+        supplierId: it.supplier_id_snapshot,
+
+        category: it.category_snapshot || "Без раздела",
+
+        price: it.unit_price_snapshot,
+
+        quantities: {},
+
+        total: 0,
+
+        amount: 0,
+
+      };
+
+      const q = Number(it.quantity);
+
+      row.quantities[o.location_id] = (row.quantities[o.location_id] || 0) + q;
+
+      row.total += q;
+
+      const cents =
+
+        it.unit_price_snapshot === null
+
+          ? null
+
+          : decimalUnits(it.unit_price_snapshot, 2);
+
+      const units = decimalUnits(it.quantity, 3);
+
+      if (cents !== null && units !== null)
+
+        row.amount += Number((cents * units + 500n) / 1000n) / 100;
+
+      exportSummary.set(key, row);
+
+    }
+
+  }
+
+
+  const rows = new Map<string, SummaryRow>();
+
+  for (const o of orders.filter((o) =>
+
+    ["draft", "revision_requested", "submitted", "approved"].includes(o.status),
 
   )) {
 
@@ -665,7 +760,7 @@ export function OrdersAdmin({
 
       // Requires the matching administrator-only RPC in Supabase.
 
-      await ordersRpc("bm_orders_admin_set_quantity", {
+      await ordersRpc("bm_orders_admin_set_quantity_v2", {
 
         p_week: week,
 
@@ -674,6 +769,9 @@ export function OrdersAdmin({
         p_product_id: productId,
 
         p_quantity: quantity,
+        p_expected_revision:
+          orders.find((o) => o.location_id === locationId)?.revision ?? null,
+
 
       });
 
@@ -735,7 +833,7 @@ export function OrdersAdmin({
 
   // Export from the complete order summary, independent of on-screen filters.
   // Each location keeps its own quantity column.
-  const exportRows = [...rows.values()]
+  const exportRows = [...exportSummary.values()]
     .filter((r) => r.total > 0)
     .sort((a, b) => a.name.localeCompare(b.name, "ru"));
 
@@ -959,7 +1057,7 @@ export function OrdersAdmin({
 
           <Text style={os.muted}>
 
-            Сводка отправленных и подтверждённых заказов. При включении галочки
+            Сводка всех заказов, включая черновики. При включении галочки
 
             также показываются товары из каталога. Товары с несколькими ценами
 
@@ -993,7 +1091,7 @@ export function OrdersAdmin({
 
           >
 
-            <Text style={{ color: "#c7a56b", fontSize: 21 }}>{showAllProducts ? "☑" : "☐"}</Text>
+            <Text style={{ color: (bmMode === 'light' ? '#B00020' : "#c7a56b"), fontSize: 21 }}>{showAllProducts ? "☑" : "☐"}</Text>
 
             <Text style={os.text}>Показать все товары</Text>
 
@@ -1015,7 +1113,7 @@ export function OrdersAdmin({
             />
           ))}
           <Text style={os.muted}>
-            Отдельный Excel для каждого поставщика: товары слева, рестораны сверху, количество в ячейках.
+            Черновики не выгружаются. Отдельный Excel для каждого поставщика: товары слева, рестораны сверху, количество в ячейках.
           </Text>
         </View>
         <Text style={os.muted}>Нажмите на количество, чтобы изменить его. Сохранение — Enter или переход в другую ячейку.</Text>
@@ -1027,7 +1125,7 @@ export function OrdersAdmin({
                   accessibilityLabel="Предыдущий ресторан"
                   disabled={androidLocationIndex === 0 || busy}
                   onPress={() => setAndroidLocationIndex((index) => Math.max(0, index - 1))}
-                  style={{ paddingHorizontal: 16, paddingVertical: 10, backgroundColor: "#292b30", borderRadius: 8, opacity: androidLocationIndex === 0 ? 0.4 : 1 }}
+                  style={{ paddingHorizontal: 16, paddingVertical: 10, backgroundColor: (bmMode === 'light' ? '#F5F5F5' : "#292b30"), borderRadius: 8, opacity: androidLocationIndex === 0 ? 0.4 : 1 }}
                 >
                   <Text style={os.text}>‹</Text>
                 </TouchableOpacity>
@@ -1039,15 +1137,15 @@ export function OrdersAdmin({
                   accessibilityLabel="Следующий ресторан"
                   disabled={androidLocationIndex >= context.locations.length - 1 || busy}
                   onPress={() => setAndroidLocationIndex((index) => Math.min(context.locations.length - 1, index + 1))}
-                  style={{ paddingHorizontal: 16, paddingVertical: 10, backgroundColor: "#292b30", borderRadius: 8, opacity: androidLocationIndex >= context.locations.length - 1 ? 0.4 : 1 }}
+                  style={{ paddingHorizontal: 16, paddingVertical: 10, backgroundColor: (bmMode === 'light' ? '#F5F5F5' : "#292b30"), borderRadius: 8, opacity: androidLocationIndex >= context.locations.length - 1 ? 0.4 : 1 }}
                 >
                   <Text style={os.text}>›</Text>
                 </TouchableOpacity>
               </View>
-              <View style={{ flexDirection: "row", backgroundColor: "#25272b" }}>
-                <Text style={[os.cell, { flex: 1.7, width: undefined }]}>Товар / поставщик</Text>
-                <Text style={[os.cell, { flex: 0.8, width: undefined }]}>Цена</Text>
-                <Text style={[os.cell, { flex: 0.9, width: undefined }]}>Кол-во</Text>
+              <View style={{ flexDirection: "row", backgroundColor: (bmMode === 'light' ? '#F5F5F5' : "#25272b") }}>
+                <Text style={[os.cell, { flex: 1.7, width: undefined, minWidth: 0, borderBottomWidth: 0 }]}>Товар / поставщик</Text>
+                <Text style={[os.cell, { flex: 0.8, width: undefined, minWidth: 0, borderBottomWidth: 0 }]}>Цена</Text>
+                <Text style={[os.cell, { flex: 0.9, width: undefined, minWidth: 0, borderBottomWidth: 0 }]}>Кол-во</Text>
               </View>
               <FlatList
                 data={summary}
@@ -1060,13 +1158,18 @@ export function OrdersAdmin({
                 windowSize={5}
                 removeClippedSubviews
                 renderItem={({ item: row }) => (
-                  <View style={{ flexDirection: "row", alignItems: "center", minHeight: 55 }}>
-                    <Text style={[os.cell, { flex: 1.7, width: undefined }]} numberOfLines={3}>{row.name}{"\n"}{row.supplier}</Text>
-                    <Text style={[os.cell, { flex: 0.8, width: undefined }]}>{row.price ?? "—"}</Text>
-                    <View style={{ flex: 0.9 }}>
+                  <View style={{ flexDirection: "row",
+                      alignItems: "center",
+                      minHeight: 55,
+                      paddingVertical: 8,
+                      borderBottomWidth: 1,
+                      borderBottomColor: (bmMode === 'light' ? '#DDDDDD' : "#383a40") }}>
+                    <Text style={[os.cell, { flex: 1.7, width: undefined, minWidth: 0, borderBottomWidth: 0 }]} numberOfLines={3}>{row.name}{"\n"}{row.supplier}</Text>
+                    <Text style={[os.cell, { flex: 0.8, width: undefined, minWidth: 0, borderBottomWidth: 0 }]}>{row.price ?? "—"}</Text>
+                    <View style={{ flex: 0.9, minWidth: 0 }}>
                       {selectedLocation ? (
                         <AdminQuantityCell
-                          key={`${row.key}:${selectedLocation.id}`}
+                          key={`${row.key}:${selectedLocation.id}`} mobile
                           value={row.quantities[selectedLocation.id] ?? 0}
                           disabled={busy || loading || (productRowCounts.get(row.productId) || 0) > 1}
                           onSave={(quantity) => saveAdminQuantity(row.productId, selectedLocation.id, quantity)}
@@ -1159,7 +1262,7 @@ export function OrdersAdmin({
 
           <Text style={os.heading}>
 
-            Итог всей сводки:{" "}
+            Итог сводки с черновиками:{" "}
 
             {[...rows.values()].reduce((n, r) => n + r.amount, 0).toFixed(2)} ₽
 
@@ -1217,11 +1320,11 @@ export function OrdersAdmin({
 
                       borderWidth: 1,
 
-                      borderColor: "#383a40",
+                      borderColor: (bmMode === 'light' ? '#DDDDDD' : "#383a40"),
 
                       borderRadius: 7,
 
-                      backgroundColor: "#202226",
+                      backgroundColor: (bmMode === 'light' ? '#F5F5F5' : "#202226"),
 
                     }}
 
@@ -1255,7 +1358,7 @@ export function OrdersAdmin({
 
                       <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
 
-                        <Text style={[os.muted, { color: "#87c99b" }]}>✓ Подтверждён</Text>
+                        <Text style={[os.muted, { color: (bmMode === 'light' ? '#187747' : "#87c99b") }]}>✓ Подтверждён</Text>
 
                         <OButton
 
@@ -1301,7 +1404,12 @@ export function OrdersAdmin({
 
           </Text>
 
-          <Choice
+          <OrderProductCreate
+              catalog={catalog}
+              setCatalog={setCatalog}
+              disabled={busy || loading}
+            />
+            <Choice
 
             value={editKind}
 
@@ -1327,7 +1435,7 @@ export function OrdersAdmin({
 
             placeholder="Поиск по названию…"
 
-            placeholderTextColor="#aaa"
+            placeholderTextColor={(bmMode === 'light' ? '#666666' : "#aaa")}
 
             value={query}
 
