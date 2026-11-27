@@ -7,6 +7,8 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  ScrollView,
+  useWindowDimensions,
   StyleSheet,
   Text,
   TextInput,
@@ -59,14 +61,30 @@ return ((
 const KeyIcon = () => {
   const { mode: bmMode } = useAppTheme();
   const C = getThemeC(bmMode);
-return ((
-  <Svg width={28} height={28} viewBox="0 0 24 24">
-    <Path
-      d="M14.5 3a6.5 6.5 0 0 0-6.2 8.4L2 17.7V22h4.3v-2.2h2.2v-2.2h2.2l1.2-1.2A6.5 6.5 0 1 0 14.5 3zm2.3 3.5a1.7 1.7 0 1 1 0 3.4 1.7 1.7 0 0 1 0-3.4z"
-      fill={C.ink}
-    />
-  </Svg>
-)); };
+
+  return (
+    <Svg width={28} height={28} viewBox="0 0 24 24">
+      <Rect
+        x={4}
+        y={10}
+        width={16}
+        height={12}
+        rx={2}
+        fill="none"
+        stroke={C.ink}
+        strokeWidth={2}
+      />
+      <Path
+        d="M8 10V6a4 4 0 0 1 8 0v4"
+        fill="none"
+        stroke={C.ink}
+        strokeWidth={2}
+        strokeLinecap="round"
+      />
+      <Circle cx={12} cy={16} r={1.5} fill={C.ink} />
+    </Svg>
+  );
+};
 
 // Иконка показа пароля
 const EyeIcon = ({ crossed }: { crossed: boolean }) => {
@@ -134,21 +152,26 @@ export default function Index() {
   const { mode: bmMode } = useAppTheme();
   const C = getThemeC(bmMode);
   const s = getThemes(bmMode);
+  const { width } = useWindowDimensions();
+  const isMobileWeb = Platform.OS === 'web' && width < 768;
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [loginError, setLoginError] = useState('');
   const [registrationOpen, setRegistrationOpen] = useState(false);
 
 
   const submit = async () => {
+    if (loading) return;
+
+    setLoginError('');
+
     if (!email.trim() || !password) {
-      Alert.alert('Внимание', 'Введите email и пароль');
+      setLoginError('Введите email и пароль');
       return;
     }
-
-    if (loading) return;
 
     setLoading(true);
 
@@ -159,21 +182,53 @@ export default function Index() {
       });
 
       if (error) {
-        Alert.alert('Ошибка входа', error.message);
+        const code = error.code ?? '';
+        const message = error.message.toLowerCase();
+
+        if (
+          code === 'invalid_credentials' ||
+          message.includes('invalid login credentials')
+        ) {
+          setLoginError('Неверный email или пароль');
+        } else if (code === 'user_banned') {
+          setLoginError(
+            'Аккаунт заблокирован. Обратитесь к администратору.'
+          );
+        } else if (code === 'email_not_confirmed') {
+          setLoginError('Необходимо подтвердить email');
+        } else if (
+          error.status === 429 ||
+          code === 'over_request_rate_limit'
+        ) {
+          setLoginError(
+            'Слишком много попыток. Попробуйте позже.'
+          );
+        } else if (
+          message.includes('fetch') ||
+          message.includes('network') ||
+          message.includes('timeout') ||
+          error.name === 'AuthRetryableFetchError'
+        ) {
+          setLoginError(
+            'Нет связи с сервером. Проверьте подключение к интернету.'
+          );
+        } else {
+          setLoginError(
+            'Не удалось войти. Попробуйте ещё раз.'
+          );
+        }
+
         return;
       }
 
       if (!data.user) {
-        Alert.alert('Ошибка', 'Не удалось получить данные пользователя');
-        return;
+        setLoginError(
+          'Не удалось получить данные пользователя'
+        );
       }
-
     } catch {
-
-
-      Alert.alert(
-        'Ошибка',
-        'Не удалось выполнить вход. Попробуйте ещё раз.'
+      setLoginError(
+        'Не удалось подключиться к серверу. Попробуйте ещё раз.'
       );
     } finally {
       setLoading(false);
@@ -203,6 +258,15 @@ export default function Index() {
           style={s.keyboard}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={[
+              s.scrollContent,
+              isMobileWeb && s.mobileWebContent,
+            ]}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
           {/* Шапка */}
           <View>
             <View style={s.logo}>
@@ -231,7 +295,10 @@ export default function Index() {
               <TextInput
                 style={s.input}
                 value={email}
-                onChangeText={setEmail}
+                onChangeText={(value) => {
+                  setEmail(value);
+                  setLoginError('');
+                }}
                 placeholder="Email"
                 placeholderTextColor={(bmMode === 'light' ? '#666666' : "#777777")}
                 keyboardType="email-address"
@@ -250,7 +317,10 @@ export default function Index() {
               <TextInput
                 style={s.input}
                 value={password}
-                onChangeText={setPassword}
+                onChangeText={(value) => {
+                  setPassword(value);
+                  setLoginError('');
+                }}
                 placeholder="Пароль"
                 placeholderTextColor={(bmMode === 'light' ? '#666666' : "#777777")}
                 secureTextEntry={!showPassword}
@@ -276,6 +346,19 @@ export default function Index() {
               </Pressable>
             </View>
 
+            {!!loginError && (
+              <View
+                style={s.loginError}
+                accessibilityRole="alert"
+                accessibilityLiveRegion="polite"
+              >
+                <Text style={s.loginErrorIcon}>!</Text>
+                <Text style={s.loginErrorText}>
+                  {loginError}
+                </Text>
+              </View>
+            )}
+
             {/* Войти */}
             <Pressable
               onPress={submit}
@@ -283,6 +366,7 @@ export default function Index() {
               style={({ pressed }) => [
                 s.btn,
                 s.btnPrimary,
+                !!loginError && s.btnPrimaryWithError,
                 pressed && !loading && s.pressed,
                 loading && s.btnDisabled,
               ]}
@@ -328,14 +412,19 @@ export default function Index() {
 
           {/* Подвал */}
           <Text style={s.footer}>
-            Нет аккаунта? Обратитесь к{' '}
+            {isMobileWeb
+              ? 'Нет аккаунта?\n'
+              : 'Нет аккаунта? Обратитесь к '}
             <Text
               style={s.footerLink}
               onPress={handleRegistration}
             >
-              администратору
+              {isMobileWeb
+                ? 'Обратитесь к администратору'
+                : 'администратору'}
             </Text>
           </Text>
+          </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
     </View>
@@ -354,10 +443,18 @@ const makeThemes = (bmMode: ThemeMode) => StyleSheet.create({
 
   keyboard: {
     flex: 1,
+  },
+
+  scrollContent: {
+    flexGrow: 1,
     paddingHorizontal: 28,
     paddingTop: 24,
     paddingBottom: 20,
     justifyContent: 'space-between',
+  },
+
+  mobileWebContent: {
+    paddingBottom: 90,
   },
 
   logo: {
@@ -434,6 +531,7 @@ const makeThemes = (bmMode: ThemeMode) => StyleSheet.create({
 
   input: {
     flex: 1,
+    minWidth: 0,
     height: '100%',
     color: getThemeC(bmMode).ink,
     fontSize: 16,
@@ -458,6 +556,42 @@ const makeThemes = (bmMode: ThemeMode) => StyleSheet.create({
   btnPrimary: {
     marginTop: 36,
     backgroundColor: getThemeC(bmMode).red,
+  },
+
+  loginError: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: bmMode === 'light' ? '#E8B4B4' : '#794044',
+    backgroundColor: bmMode === 'light' ? '#FDEBEC' : '#402023',
+  },
+
+  loginErrorIcon: {
+    width: 22,
+    height: 22,
+    lineHeight: 20,
+    textAlign: 'center',
+    borderWidth: 1,
+    borderRadius: 11,
+    borderColor: bmMode === 'light' ? '#B42318' : '#FFAAAA',
+    color: bmMode === 'light' ? '#B42318' : '#FFAAAA',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+
+  loginErrorText: {
+    flex: 1,
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '500',
+    color: bmMode === 'light' ? '#B42318' : '#FFAAAA',
+  },
+
+  btnPrimaryWithError: {
+    marginTop: 12,
   },
 
   btnDisabled: {
