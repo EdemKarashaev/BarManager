@@ -1,3 +1,6 @@
+import {
+  OrderNotificationsProvider,
+} from "@/providers/order-notifications";
 import { RegistrationWaiting } from '@/components/registration-waiting';
 import { PermissionsProvider, usePermissions } from '@/lib/permissions';
 import { useStaffDevice } from '@/lib/staff-device';
@@ -330,7 +333,9 @@ export default function RootLayout() {
         <PermissionsProvider><UpdateProvider>
           <View style={{ flex: 1 }}>
             <WebUpdateNotice />
-            <Routes />
+            <OrderNotificationsProvider>
+              <Routes />
+            </OrderNotificationsProvider>
           </View>
         </UpdateProvider></PermissionsProvider>
       </AuthProvider>

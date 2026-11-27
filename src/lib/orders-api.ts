@@ -18,6 +18,7 @@ export type CatalogSupplier = {
   id: string;
   name: string;
   minimum_order_amount: string | null;
+  minimum_is_shared: boolean;
   is_active: boolean;
 };
 export type Catalog = {

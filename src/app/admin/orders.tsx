@@ -1,3 +1,4 @@
+import { Pressable } from "react-native";
 import { OrderCycleManager } from "@/components/order-cycle-manager";
 import type { OrderCycle } from "@/lib/orders-api";
 import { useAppTheme } from '@/providers/theme';
@@ -990,6 +991,35 @@ export function OrdersAdmin({
 
   }
 
+
+  async function saveSharedMinimum(
+    supplierId: string,
+    isShared: boolean,
+  ) {
+    if (busy || loading) return;
+
+    setBusy(true);
+    setError("");
+
+    try {
+      await ordersRpc(
+        "bm_orders_supplier_minimum_mode",
+        {
+          p_supplier_id: supplierId,
+          p_is_shared: isShared,
+        },
+      );
+
+      setCatalog(
+        await ordersRpc<Catalog>("bm_orders_catalog")
+      );
+    } catch (e) {
+      setError(orderError(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function saveCatalogCell(
 
     kind: "supplier" | "product",
@@ -1520,6 +1550,15 @@ export function OrdersAdmin({
                 </Text>
 
                 {editKind === "product" && <Text style={[os.cell, { width: 230 }]}>Поставщик</Text>}
+                {editKind === "supplier" && (
+                  <Text style={[os.cell, {
+                    width: 170,
+                    textAlign: "center",
+                  }]}>
+                    На все рестораны
+                  </Text>
+                )}
+
 
               </View>
 
@@ -1550,6 +1589,46 @@ export function OrdersAdmin({
                           onSave={(value) => saveCatalogCell("supplier", s.id, value)}
 
                         />
+                        <View style={{
+                          width: 170,
+                          alignItems: "center",
+                          justifyContent: "center",
+                          paddingVertical: 8,
+                        }}>
+                          
+                          <Pressable
+                            accessibilityRole="checkbox"
+                            accessibilityLabel={
+                              `Общий минимум: ${s.name}`
+                            }
+                            accessibilityState={{
+                              checked: s.minimum_is_shared === true,
+                              disabled: busy || loading,
+                            }}
+                            disabled={busy || loading}
+                            onPress={() =>
+                              saveSharedMinimum(
+                                s.id,
+                                !s.minimum_is_shared,
+                              )
+                            }
+                            style={{
+                              padding: 8,
+                              opacity: busy ? 0.5 : 1,
+                            }}
+                          >
+                            <Text style={{
+                              fontSize: 24,
+                              color: s.minimum_is_shared
+                                ? "#65B88A"
+                                : "#888888",
+                            }}>
+                              {s.minimum_is_shared ? "☑" : "☐"}
+                            </Text>
+                          </Pressable>
+
+                        </View>
+
 
                       </View>
 

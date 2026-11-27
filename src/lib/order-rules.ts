@@ -5,8 +5,14 @@ export type Product = {
   category: string;
   price: string | null;
 };
-export type Supplier = { id: string; name: string; minimum: string | null };
+export type Supplier = {
+  id: string;
+  name: string;
+  minimum: string | null;
+  isShared?: boolean;
+};
 export type SupplierTotal = {
+  isShared?: boolean;
   id: string;
   name: string;
   amount: string;
@@ -70,7 +76,7 @@ export function evaluateOrder(
     const minimum = s.minimum === null ? null : decimalUnits(s.minimum, 2);
     if (minimum === null) issues.push(`Не задан минимум: ${s.name}`);
     const shortfall =
-      minimum === null || total.incomplete
+      minimum === null || total.incomplete || s.isShared
         ? null
         : minimum > total.cents
           ? minimum - total.cents
@@ -80,6 +86,7 @@ export function evaluateOrder(
     supplierTotals.push({
       id,
       name: s.name,
+      isShared: s.isShared === true,
       amount: money(total.cents),
       minimum: minimum === null ? null : money(minimum),
       shortfall: shortfall === null ? null : money(shortfall),

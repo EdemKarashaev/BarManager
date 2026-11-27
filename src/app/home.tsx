@@ -1,3 +1,7 @@
+import {
+  useOrderNotifications,
+} from "@/providers/order-notifications";
+import { OrderNotificationList } from "@/components/order-notification-list";
 import { APP_VERSION } from '@/lib/app-version';
 import { usePermissions } from '@/lib/permissions';
 import { useAppTheme } from '@/providers/theme';
@@ -137,7 +141,7 @@ export default function HomeScreen() {
     () => createStyles(mode),
     [mode]
   );
-  const { staff, signOut, offline, retry } = useAuth();
+  const { session, staff, signOut, offline, retry } = useAuth();
   const u = useUpdate();
   
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -192,9 +196,17 @@ export default function HomeScreen() {
     };
   }, [staffAllowed]));
 
+  const notificationUserId = session?.user.id;
+
+  const {
+    items: orderNotifications,
+    count: orderNotificationCount,
+    refresh: refreshOrderNotifications,
+  } = useOrderNotifications();
+
   const requestCount = staffAllowed ? pendingCount : 0;
   const notificationCount =
-    requestCount + (u.available ? 1 : 0);
+    requestCount + orderNotificationCount + (u.available ? 1 : 0);
 
 
   const sectionKeys: Record<Route, string> = {
@@ -572,7 +584,8 @@ if (route === 'transfers') {
               alignSelf: 'flex-end',
               marginTop: 62,
               marginRight: 12,
-              width: 310,
+              width: 350,
+              maxHeight: '80%',
               maxWidth: '90%',
               borderRadius: 16,
               padding: 16,
@@ -619,6 +632,21 @@ if (route === 'transfers') {
                 backgroundColor:
                   mode === 'light' ? '#EEEEEE' : '#38383C',
               }} />
+
+              <ScrollView
+                style={{ flexGrow: 0 }}
+                contentContainerStyle={{ gap: 14 }}
+                showsVerticalScrollIndicator={false}
+              >
+
+              {orderNotifications.length > 0 && (
+                <OrderNotificationList
+                  key={notificationUserId}
+                  items={orderNotifications}
+                  refresh={refreshOrderNotifications}
+                  onNavigate={() => setNotificationsOpen(false)}
+                />
+              )}
 
               {requestCount > 0 && (
                 <Pressable
@@ -747,7 +775,7 @@ if (route === 'transfers') {
                     </Text>
                   </Pressable>
                 </>
-              ) : requestCount === 0 ? (
+              ) : requestCount === 0 && orderNotifications.length === 0 ? (
                 <View style={{
                   alignItems: 'center',
                   paddingVertical: 20,
@@ -767,6 +795,7 @@ if (route === 'transfers') {
                   </Text>
                 </View>
               ) : null}
+              </ScrollView>
             </View>
           </SafeAreaView>
         </View>
