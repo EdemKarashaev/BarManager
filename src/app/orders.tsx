@@ -11,6 +11,7 @@ import {
   getThemeos,
   type Filters,
 } from "@/components/order-ui";
+import { OrderCycleHistory } from "@/components/order-cycle-history";
 import { OrdersAdmin } from "@/components/orders-admin";
 import {
   decimalUnits,
@@ -101,6 +102,7 @@ export default function OrdersScreen() {
   const { session } = useAuth();
   useEffect(() => blockUpdates(), []);
   const [week, setWeek] = useState(monday());
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [context, setContext] = useState<OrderContext | null>(null);
   const [catalog, setCatalog] = useState<Catalog>({
     products: [],
@@ -770,7 +772,18 @@ export default function OrdersScreen() {
              <Text style={{ color: (bmMode === 'light' ? '#111111' : "#fff"), fontSize: 13 }}>‹ Главная</Text>
            </Pressable>
            <Text style={[os.title, { fontSize: 20 }]}>Заказы</Text>
-           <View style={{ width: 65 }} />
+           <Pressable
+            disabled={busy || loading || dirty || !!conflict}
+            onPress={() => {
+              if (working.current || updateBlocked.current) return;
+              setHistoryOpen(v => !v);
+            }}
+            style={{ padding: 5 }}
+          >
+            <Text style={os.text}>
+              {historyOpen ? "Заказы" : "История"}
+            </Text>
+          </Pressable>
          </View>
          <View style={[os.row, { justifyContent: "space-between" }]}>
            <Pressable disabled={loading || busy || dirty} onPress={() => setWeek(shiftWeek(week, -7))} style={{ padding: 5 }}>
@@ -800,6 +813,11 @@ export default function OrdersScreen() {
         <View style={os.content}>
           <OButton title="Повторить" onPress={() => setReload((n) => n + 1)} />
         </View>
+      ) : historyOpen ? (
+        <OrderCycleHistory
+          isAdmin={context.isAdmin}
+          locations={context.locations}
+        />
       ) : context.isAdmin ? (
         <OrdersAdmin
           context={context}
