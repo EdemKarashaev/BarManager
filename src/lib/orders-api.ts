@@ -18,6 +18,7 @@ export type CatalogSupplier = {
   id: string;
   name: string;
   minimum_order_amount: string | null;
+  minimum_is_shared: boolean;
   is_active: boolean;
 };
 export type Catalog = {
@@ -38,6 +39,7 @@ export type OrderItem = {
 export type Order = {
   id: string;
   week_start: string;
+  cycle_id?: string | null;
   location_id: string;
   revision: number;
   status: string;
@@ -86,3 +88,86 @@ export const orderStatus: Record<string, string> = {
   approved: "Подтверждён",
   cancelled: "Отменён",
 };
+
+
+// Независимые периоды заказов — Bar Manager 1.1.0
+
+export type OrderCycle = {
+  id: string;
+  name: string;
+  week_start: string;
+  cycle_type: "regular" | "additional";
+  status: "planned" | "open" | "closed" | "cancelled";
+  check_at: string;
+  checked_at: string | null;
+  auto_check_enabled: boolean;
+  orders_count: number;
+  submitted_count: number;
+  approved_count: number;
+  my_order: {
+    id: string;
+    status: string;
+    revision: number;
+    manager_comment: string | null;
+  } | null;
+};
+
+export const cycleStatus: Record<OrderCycle["status"], string> = {
+  planned: "Запланирован",
+  open: "Открыт",
+  closed: "Закрыт",
+  cancelled: "Отменён",
+};
+
+export function fetchOrderCycles() {
+  return ordersRpc<OrderCycle[]>("bm_orders_cycles_list");
+}
+
+export function fetchCycleDashboard(cycleId: string) {
+  return ordersRpc<Order[]>("bm_orders_dashboard_cycle", {
+    p_cycle_id: cycleId,
+  });
+}
+
+export function fetchMyCycleOrder(cycleId: string) {
+  return ordersRpc<{
+    order: Order;
+    items: OrderItem[];
+  } | null>("bm_orders_get_cycle", {
+    p_cycle_id: cycleId,
+  });
+}
+
+export function createOrderCycle(
+  name: string,
+  date: string,
+  time: string,
+) {
+  return ordersRpc<string>("bm_orders_cycle_create", {
+    p_name: name,
+    p_date: date,
+    p_time: time,
+  });
+}
+
+export function rescheduleOrderCycle(
+  cycleId: string,
+  date: string,
+  time: string,
+) {
+  return ordersRpc("bm_orders_cycle_reschedule", {
+    p_cycle_id: cycleId,
+    p_date: date,
+    p_time: time,
+  });
+}
+
+export function formatCycleDate(value: string): string {
+  return new Date(value).toLocaleString("ru-RU", {
+    timeZone: "Europe/Moscow",
+    day: "numeric",
+    month: "long",
+    hour: "2-digit",
+    minute: "2-digit",
+  }) + " МСК";
+}

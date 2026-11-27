@@ -1,3 +1,6 @@
+import { Pressable } from "react-native";
+import { OrderCycleManager } from "@/components/order-cycle-manager";
+import type { OrderCycle } from "@/lib/orders-api";
 import { useAppTheme } from '@/providers/theme';
 import { OrderProductCreate } from "@/components/order-product-create";
 import { blockUpdates } from "@/lib/update-guard";
@@ -460,7 +463,8 @@ export function OrdersAdmin({
 
   setCatalog,
 
-  week,
+  week: initialWeek,
+  cycleId: initialCycleId = null,
 
 }: {
 
@@ -471,6 +475,7 @@ export function OrdersAdmin({
   setCatalog: (c: Catalog) => void;
 
   week: string;
+  cycleId?: string | null;
 
 }) {
   const { mode: bmMode } = useAppTheme();
@@ -501,6 +506,24 @@ export function OrdersAdmin({
 
   const [showAllProducts, setShowAllProducts] = useState(false);
   const [exporting, setExporting] = useState(false);
+
+  const [selectedCycle, setSelectedCycle] =
+    useState<OrderCycle | null>(null);
+
+  const week = selectedCycle?.week_start ?? initialWeek;
+
+  // До серверной активации используем старый API.
+  const cycleId = selectedCycle?.id ?? initialCycleId;
+
+  const orderLabel = selectedCycle
+    ? `${selectedCycle.name}_${new Date(
+        selectedCycle.check_at
+      ).toLocaleDateString("ru-RU", {
+        timeZone: "Europe/Moscow",
+      })}_${selectedCycle.id.slice(0, 8)}`
+    : week;
+
+
   const [androidLocationIndex, setAndroidLocationIndex] = useState(0);
   const isAndroid = Platform.OS === "android";
   const selectedLocation = context.locations[Math.min(androidLocationIndex, Math.max(0, context.locations.length - 1))];
@@ -515,7 +538,14 @@ export function OrdersAdmin({
 
     setError("");
 
-    ordersRpc<Order[]>("bm_orders_dashboard", { p_week: week })
+    ordersRpc<Order[]>(
+      cycleId
+        ? "bm_orders_dashboard_cycle"
+        : "bm_orders_dashboard",
+      cycleId
+        ? { p_cycle_id: cycleId }
+        : { p_week: week }
+    )
 
       .then((rows) => {
 
@@ -541,7 +571,7 @@ export function OrdersAdmin({
 
     };
 
-  }, [week, reload]);
+  }, [week, cycleId, reload]);
 
   const exportSummary = new Map<string, SummaryRow>();
 
@@ -760,9 +790,15 @@ export function OrdersAdmin({
 
       // Requires the matching administrator-only RPC in Supabase.
 
-      await ordersRpc("bm_orders_admin_set_quantity_v2", {
+      await ordersRpc(
+        cycleId
+          ? "bm_orders_admin_set_quantity_cycle_v2"
+          : "bm_orders_admin_set_quantity_v2",
+        {
 
-        p_week: week,
+        ...(cycleId
+          ? { p_cycle_id: cycleId }
+          : { p_week: week }),
 
         p_location_id: locationId,
 
@@ -849,7 +885,7 @@ export function OrdersAdmin({
     setExporting(true);
     setError("");
     try {
-      await exportAllSuppliersZip(exportRows, context.locations, week);
+      await exportAllSuppliersZip(exportRows, context.locations, orderLabel);
     } catch (e) {
       setError("Не удалось выгрузить заказы: " + orderError(e));
     } finally {
@@ -867,7 +903,7 @@ export function OrdersAdmin({
           ? r.supplierId === null && r.supplier === name
           : r.supplierId === id,
       );
-      await exportSupplierExcel(supplierRows, context.locations, name, week);
+      await exportSupplierExcel(supplierRows, context.locations, name, orderLabel);
     } catch (e) {
       setError("Не удалось выгрузить поставщика: " + orderError(e));
     } finally {
@@ -953,6 +989,35 @@ export function OrdersAdmin({
 
     }
 
+  }
+
+
+  async function saveSharedMinimum(
+    supplierId: string,
+    isShared: boolean,
+  ) {
+    if (busy || loading) return;
+
+    setBusy(true);
+    setError("");
+
+    try {
+      await ordersRpc(
+        "bm_orders_supplier_minimum_mode",
+        {
+          p_supplier_id: supplierId,
+          p_is_shared: isShared,
+        },
+      );
+
+      setCatalog(
+        await ordersRpc<Catalog>("bm_orders_catalog")
+      );
+    } catch (e) {
+      setError(orderError(e));
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function saveCatalogCell(
@@ -1270,7 +1335,22 @@ export function OrdersAdmin({
 
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
 
-            <Text style={os.heading}>Рестораны · неделя {week}</Text>
+            
+            <OrderCycleManager
+              selected={selectedCycle}
+              week={week}
+              disabled={loading || busy || exporting}
+              onSelect={(cycle) => {
+                if (loading || busy || exporting) return;
+
+                if (
+                  cycle.status !== "open"
+                ) return;
+
+                setSelectedCycle(cycle);
+              }}
+            />
+<Text style={os.heading}>Рестораны · {selectedCycle?.name ?? week}</Text>
 
             <OButton
 
@@ -1470,6 +1550,15 @@ export function OrdersAdmin({
                 </Text>
 
                 {editKind === "product" && <Text style={[os.cell, { width: 230 }]}>Поставщик</Text>}
+                {editKind === "supplier" && (
+                  <Text style={[os.cell, {
+                    width: 170,
+                    textAlign: "center",
+                  }]}>
+                    На все рестораны
+                  </Text>
+                )}
+
 
               </View>
 
@@ -1500,6 +1589,46 @@ export function OrdersAdmin({
                           onSave={(value) => saveCatalogCell("supplier", s.id, value)}
 
                         />
+                        <View style={{
+                          width: 170,
+                          alignItems: "center",
+                          justifyContent: "center",
+                          paddingVertical: 8,
+                        }}>
+                          
+                          <Pressable
+                            accessibilityRole="checkbox"
+                            accessibilityLabel={
+                              `Общий минимум: ${s.name}`
+                            }
+                            accessibilityState={{
+                              checked: s.minimum_is_shared === true,
+                              disabled: busy || loading,
+                            }}
+                            disabled={busy || loading}
+                            onPress={() =>
+                              saveSharedMinimum(
+                                s.id,
+                                !s.minimum_is_shared,
+                              )
+                            }
+                            style={{
+                              padding: 8,
+                              opacity: busy ? 0.5 : 1,
+                            }}
+                          >
+                            <Text style={{
+                              fontSize: 24,
+                              color: s.minimum_is_shared
+                                ? "#65B88A"
+                                : "#888888",
+                            }}>
+                              {s.minimum_is_shared ? "☑" : "☐"}
+                            </Text>
+                          </Pressable>
+
+                        </View>
+
 
                       </View>
 

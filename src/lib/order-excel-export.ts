@@ -19,11 +19,11 @@ export type ExportLocation = { id: string; name: string };
 const safeFileName = (name: string) => name.replace(/[\\/:*?"<>|\x00-\x1f]/g, '_').slice(0, 80);
 const round3 = (n: number) => Number(n.toFixed(3));
 
-function workbookBase64(rows: ExportSummaryRow[], locations: ExportLocation[], supplierName: string, week: string): string {
+function workbookBase64(rows: ExportSummaryRow[], locations: ExportLocation[], supplierName: string, orderLabel: string): string {
   const columns = ['Товар', 'Цена, ₽', ...locations.map(l => l.name), 'Всего', 'Сумма, ₽'];
   const data: (string | number)[][] = [
     [`Поставщик: ${supplierName}`],
-    [`Неделя: ${week}`],
+    [`Заказ: ${orderLabel}`],
     [],
     columns,
     ...rows.map(r => [
@@ -182,14 +182,14 @@ async function shareBase64(
   });
 }
 
-export async function exportSupplierExcel(rows: ExportSummaryRow[], locations: ExportLocation[], supplierName: string, week: string) {
+export async function exportSupplierExcel(rows: ExportSummaryRow[], locations: ExportLocation[], supplierName: string, orderLabel: string) {
   if (!rows.length) throw new Error('У поставщика нет заказанных товаров.');
-  await shareBase64(workbookBase64(rows, locations, supplierName, week),
-    `Заказ_${safeFileName(supplierName)}_${week}.xlsx`,
+  await shareBase64(workbookBase64(rows, locations, supplierName, orderLabel),
+    `Заказ_${safeFileName(supplierName)}_${safeFileName(orderLabel)}.xlsx`,
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
 }
 
-export async function exportAllSuppliersZip(rows: ExportSummaryRow[], locations: ExportLocation[], week: string) {
+export async function exportAllSuppliersZip(rows: ExportSummaryRow[], locations: ExportLocation[], orderLabel: string) {
   const groups = new Map<string, { name: string; rows: ExportSummaryRow[] }>();
   for (const row of rows) {
     const id = row.supplierId ?? `unknown:${row.supplier}`;
@@ -200,11 +200,11 @@ export async function exportAllSuppliersZip(rows: ExportSummaryRow[], locations:
   const zip = new JSZip();
   const used = new Set<string>();
   for (const [id, group] of groups) {
-    let filename = `Заказ_${safeFileName(group.name)}_${week}.xlsx`;
-    if (used.has(filename)) filename = `Заказ_${safeFileName(group.name)}_${safeFileName(id.slice(0, 8))}_${week}.xlsx`;
+    let filename = `Заказ_${safeFileName(group.name)}_${safeFileName(orderLabel)}.xlsx`;
+    if (used.has(filename)) filename = `Заказ_${safeFileName(group.name)}_${safeFileName(id.slice(0, 8))}_${safeFileName(orderLabel)}.xlsx`;
     used.add(filename);
-    zip.file(filename, workbookBase64(group.rows, locations, group.name, week), { base64: true });
+    zip.file(filename, workbookBase64(group.rows, locations, group.name, orderLabel), { base64: true });
   }
   const base64 = await zip.generateAsync({ type: 'base64', compression: 'DEFLATE' });
-  await shareBase64(base64, `Заказы_поставщики_${week}.zip`, 'application/zip');
+  await shareBase64(base64, `Заказы_поставщики_${safeFileName(orderLabel)}.zip`, 'application/zip');
 }

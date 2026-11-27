@@ -1,3 +1,4 @@
+import { OrderCyclesList } from "@/components/order-cycles-list";
 import { useAppTheme } from '@/providers/theme';
 import { usePreventRemove } from "expo-router";
 import { mergeOrderQuantities } from "@/lib/order-merge";
@@ -11,6 +12,7 @@ import {
   getThemeos,
   type Filters,
 } from "@/components/order-ui";
+import { OrderCycleHistory } from "@/components/order-cycle-history";
 import { OrdersAdmin } from "@/components/orders-admin";
 import {
   decimalUnits,
@@ -24,7 +26,6 @@ import {
   orderError,
   ordersRpc,
   orderStatus,
-  shiftWeek,
   type Catalog,
   type Order,
   type OrderContext,
@@ -32,7 +33,7 @@ import {
 } from "@/lib/orders-api";
 import { useAuth } from "@/providers/auth";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -100,7 +101,23 @@ export default function OrdersScreen() {
 
   const { session } = useAuth();
   useEffect(() => blockUpdates(), []);
-  const [week, setWeek] = useState(monday());
+  const params = useLocalSearchParams<{
+    cycleId?: string;
+    cycleWeek?: string;
+  }>();
+
+  const initialCycleId =
+    typeof params.cycleId === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(params.cycleId) &&
+    typeof params.cycleWeek === "string" &&
+    /^\d{4}-\d{2}-\d{2}$/.test(params.cycleWeek)
+      ? params.cycleId
+      : null;
+
+  const [week, setWeek] = useState(
+    initialCycleId ? params.cycleWeek! : monday()
+  );
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [context, setContext] = useState<OrderContext | null>(null);
   const [catalog, setCatalog] = useState<Catalog>({
     products: [],
@@ -173,7 +190,12 @@ export default function OrdersScreen() {
       window.removeEventListener('beforeunload', unload);
     };
   }, [dirty, busy]);
-  const draftKey = `bm:order-draft:${session?.user.id}:${week}`;
+  const [activeCycleId, setActiveCycleId] =
+    useState<string | null>(initialCycleId);
+
+  const draftKey = activeCycleId
+    ? `bm:order-draft:${session?.user.id}:cycle:${activeCycleId}`
+    : `bm:order-draft:${session?.user.id}:${week}`;
   // Clear the previous account/week before fetching so stale orders cannot be edited.
   useEffect(() => {
     let active = true;
@@ -203,8 +225,12 @@ export default function OrdersScreen() {
       setCatalog(cat);
       if (!ctx.isAdmin) {
         const result = await ordersRpc<{ order: Order; items: OrderItem[] }>(
-          "bm_orders_open",
-          { p_week: week },
+          activeCycleId
+          ? "bm_orders_open_cycle"
+          : "bm_orders_open",
+        activeCycleId
+          ? { p_cycle_id: activeCycleId }
+          : { p_week: week },
         );
         if (!active) return;
         const q = Object.fromEntries(
@@ -357,6 +383,7 @@ export default function OrdersScreen() {
     id: s.id,
     name: s.name,
     minimum: s.minimum_order_amount,
+    isShared: s.minimum_is_shared === true,
   })), [catalog.suppliers]);
   const products = useMemo(() => editable
     ? currentProducts
@@ -502,7 +529,12 @@ export default function OrdersScreen() {
       const remote = await ordersRpc<{
         order: Order;
         items: OrderItem[];
-      }>("bm_orders_open", { p_week: week });
+      }>(activeCycleId
+          ? "bm_orders_open_cycle"
+          : "bm_orders_open",
+        activeCycleId
+          ? { p_cycle_id: activeCycleId }
+          : { p_week: week });
 
       if (generation !== live.current) return;
 
@@ -761,26 +793,64 @@ export default function OrdersScreen() {
          <View style={[os.row, { justifyContent: "space-between" }]}>
            <Pressable onPress={() => {
                if (working.current || busy || loading) return;
+                if (historyOpen) {
+                  setHistoryOpen(false);
+                  return;
+                }
                if (dirty || updateBlocked.current) {
                  setExitOpen(true);
                } else {
                  router.dismissTo("/home");
                }
              }} disabled={busy || loading || exitAfterSave} style={{ paddingVertical: 5, paddingHorizontal: 8, borderRadius: 7, backgroundColor: (bmMode === 'light' ? '#FCE7E9' : "#75444f") }}>
-             <Text style={{ color: (bmMode === 'light' ? '#111111' : "#fff"), fontSize: 13 }}>‹ Главная</Text>
+             <Text style={{ color: (bmMode === 'light' ? '#111111' : "#fff"), fontSize: 13 }}>{historyOpen ? "‹ Назад" : "‹ Главная"}</Text>
            </Pressable>
-           <Text style={[os.title, { fontSize: 20 }]}>Заказы</Text>
-           <View style={{ width: 65 }} />
+           <Text style={[os.title, { fontSize: 20 }]}>{historyOpen ? "История заказов" : "Заказы"}</Text>
+           <Pressable
+            disabled={historyOpen || busy || loading || dirty || !!conflict}
+            onPress={() => {
+              if (working.current || updateBlocked.current) return;
+              setHistoryOpen(v => !v);
+            }}
+            style={{ padding: 5 }}
+          >
+            <Text style={os.text}>
+              {historyOpen ? "" : "История"}
+            </Text>
+          </Pressable>
          </View>
-         <View style={[os.row, { justifyContent: "space-between" }]}>
-           <Pressable disabled={loading || busy || dirty} onPress={() => setWeek(shiftWeek(week, -7))} style={{ padding: 5 }}>
-             <Text style={[os.text, { fontSize: 13 }]}>‹ Неделя</Text>
-           </Pressable>
-           <Text style={[os.text, { fontSize: 13 }]}>{week}</Text>
-           <Pressable disabled={loading || busy || dirty} onPress={() => setWeek(shiftWeek(week, 7))} style={{ padding: 5 }}>
-             <Text style={[os.text, { fontSize: 13 }]}>Неделя ›</Text>
-           </Pressable>
-         </View>
+         {!historyOpen && (
+            <>
+              {context && !context.isAdmin && (
+                <OrderCyclesList
+                  selectedId={activeCycleId}
+                  selectedWeek={week}
+                  disabled={
+                    loading || busy || dirty || !!conflict
+                  }
+                  onSelect={(cycle) => {
+                    if (
+                      loading || busy || dirty || conflict ||
+                      working.current || updateBlocked.current
+                    ) return;
+
+                    if (
+                      cycle.status !== "open"
+                    ) {
+                      setNotice(
+                        "Этот период доступен в истории."
+                      );
+                      return;
+                    }
+
+                    setActiveCycleId(cycle.id);
+                    setWeek(cycle.week_start);
+                  }}
+                />
+              )}
+              
+            </>
+          )}
          {!!error && (
            <View>
              <Text accessibilityRole="alert" style={os.error}>{error}</Text>
@@ -800,6 +870,11 @@ export default function OrdersScreen() {
         <View style={os.content}>
           <OButton title="Повторить" onPress={() => setReload((n) => n + 1)} />
         </View>
+      ) : historyOpen ? (
+        <OrderCycleHistory
+          isAdmin={context.isAdmin}
+          locations={context.locations}
+        />
       ) : context.isAdmin ? (
         <OrdersAdmin
           context={context}
@@ -962,7 +1037,10 @@ export default function OrdersScreen() {
                <ScrollView style={{ maxHeight: 115 }} nestedScrollEnabled>
                  {check.supplierTotals.map((t) => (
                    <Text key={t.id} style={[t.shortfall && Number(t.shortfall) > 0 ? os.error : os.muted, { fontSize: 12 }]}>
-                     {t.name}: {t.amount} / {t.minimum ?? "минимум не задан"} ₽
+                     {t.name}: {t.amount} ₽
+                     {t.isShared
+                       ? ` · Общий минимум: ${t.minimum ?? "не задан"} ₽`
+                       : ` / ${t.minimum ?? "минимум не задан"} ₽`}
                      {t.shortfall && Number(t.shortfall) > 0 ? ` · не хватает ${t.shortfall} ₽` : ""}
                    </Text>
                  ))}
