@@ -18,12 +18,14 @@ import { OrderCyclePicker } from './order-cycle-picker';
 
 type Props = {
   selectedId: string | null;
+  selectedWeek?: string;
   onSelect: (cycle: OrderCycle) => void;
   disabled?: boolean;
 };
 
 export function OrderCyclesList({
   selectedId,
+  selectedWeek,
   onSelect,
   disabled = false,
 }: Props) {
@@ -85,13 +87,17 @@ export function OrderCyclesList({
     );
   }
 
-  const selected = cycles.find(c => c.id === selectedId);
+  const selected = cycles.find(c => c.id === selectedId)
+    ?? cycles.find(c =>
+      c.cycle_type === "regular" &&
+      c.week_start === selectedWeek
+    );
 
   return (
     <View>
       <OrderCyclePicker
         cycles={cycles}
-        selectedId={selectedId}
+        selectedId={selected?.id ?? null}
         onSelect={onSelect}
         disabled={disabled}
       />

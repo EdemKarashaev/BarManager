@@ -1,3 +1,4 @@
+import { OrderCyclesList } from "@/components/order-cycles-list";
 import { useAppTheme } from '@/providers/theme';
 import { usePreventRemove } from "expo-router";
 import { mergeOrderQuantities } from "@/lib/order-merge";
@@ -25,7 +26,6 @@ import {
   orderError,
   ordersRpc,
   orderStatus,
-  shiftWeek,
   type Catalog,
   type Order,
   type OrderContext,
@@ -175,7 +175,12 @@ export default function OrdersScreen() {
       window.removeEventListener('beforeunload', unload);
     };
   }, [dirty, busy]);
-  const draftKey = `bm:order-draft:${session?.user.id}:${week}`;
+  const [activeCycleId, setActiveCycleId] =
+    useState<string | null>(null);
+
+  const draftKey = activeCycleId
+    ? `bm:order-draft:${session?.user.id}:cycle:${activeCycleId}`
+    : `bm:order-draft:${session?.user.id}:${week}`;
   // Clear the previous account/week before fetching so stale orders cannot be edited.
   useEffect(() => {
     let active = true;
@@ -205,8 +210,12 @@ export default function OrdersScreen() {
       setCatalog(cat);
       if (!ctx.isAdmin) {
         const result = await ordersRpc<{ order: Order; items: OrderItem[] }>(
-          "bm_orders_open",
-          { p_week: week },
+          activeCycleId
+          ? "bm_orders_open_cycle"
+          : "bm_orders_open",
+        activeCycleId
+          ? { p_cycle_id: activeCycleId }
+          : { p_week: week },
         );
         if (!active) return;
         const q = Object.fromEntries(
@@ -504,7 +513,12 @@ export default function OrdersScreen() {
       const remote = await ordersRpc<{
         order: Order;
         items: OrderItem[];
-      }>("bm_orders_open", { p_week: week });
+      }>(activeCycleId
+          ? "bm_orders_open_cycle"
+          : "bm_orders_open",
+        activeCycleId
+          ? { p_cycle_id: activeCycleId }
+          : { p_week: week });
 
       if (generation !== live.current) return;
 
@@ -763,17 +777,21 @@ export default function OrdersScreen() {
          <View style={[os.row, { justifyContent: "space-between" }]}>
            <Pressable onPress={() => {
                if (working.current || busy || loading) return;
+                if (historyOpen) {
+                  setHistoryOpen(false);
+                  return;
+                }
                if (dirty || updateBlocked.current) {
                  setExitOpen(true);
                } else {
                  router.dismissTo("/home");
                }
              }} disabled={busy || loading || exitAfterSave} style={{ paddingVertical: 5, paddingHorizontal: 8, borderRadius: 7, backgroundColor: (bmMode === 'light' ? '#FCE7E9' : "#75444f") }}>
-             <Text style={{ color: (bmMode === 'light' ? '#111111' : "#fff"), fontSize: 13 }}>‹ Главная</Text>
+             <Text style={{ color: (bmMode === 'light' ? '#111111' : "#fff"), fontSize: 13 }}>{historyOpen ? "‹ Назад" : "‹ Главная"}</Text>
            </Pressable>
-           <Text style={[os.title, { fontSize: 20 }]}>Заказы</Text>
+           <Text style={[os.title, { fontSize: 20 }]}>{historyOpen ? "История заказов" : "Заказы"}</Text>
            <Pressable
-            disabled={busy || loading || dirty || !!conflict}
+            disabled={historyOpen || busy || loading || dirty || !!conflict}
             onPress={() => {
               if (working.current || updateBlocked.current) return;
               setHistoryOpen(v => !v);
@@ -781,19 +799,42 @@ export default function OrdersScreen() {
             style={{ padding: 5 }}
           >
             <Text style={os.text}>
-              {historyOpen ? "Заказы" : "История"}
+              {historyOpen ? "" : "История"}
             </Text>
           </Pressable>
          </View>
-         <View style={[os.row, { justifyContent: "space-between" }]}>
-           <Pressable disabled={loading || busy || dirty} onPress={() => setWeek(shiftWeek(week, -7))} style={{ padding: 5 }}>
-             <Text style={[os.text, { fontSize: 13 }]}>‹ Неделя</Text>
-           </Pressable>
-           <Text style={[os.text, { fontSize: 13 }]}>{week}</Text>
-           <Pressable disabled={loading || busy || dirty} onPress={() => setWeek(shiftWeek(week, 7))} style={{ padding: 5 }}>
-             <Text style={[os.text, { fontSize: 13 }]}>Неделя ›</Text>
-           </Pressable>
-         </View>
+         {!historyOpen && (
+            <>
+              {context && !context.isAdmin && (
+                <OrderCyclesList
+                  selectedId={activeCycleId}
+                  selectedWeek={week}
+                  disabled={
+                    loading || busy || dirty || !!conflict
+                  }
+                  onSelect={(cycle) => {
+                    if (
+                      loading || busy || dirty || conflict ||
+                      working.current || updateBlocked.current
+                    ) return;
+
+                    if (
+                      cycle.status !== "open"
+                    ) {
+                      setNotice(
+                        "Этот период доступен в истории."
+                      );
+                      return;
+                    }
+
+                    setActiveCycleId(cycle.id);
+                    setWeek(cycle.week_start);
+                  }}
+                />
+              )}
+              
+            </>
+          )}
          {!!error && (
            <View>
              <Text accessibilityRole="alert" style={os.error}>{error}</Text>
